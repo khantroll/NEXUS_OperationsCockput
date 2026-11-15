@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "NEXUS Operations Cockpit foundation",
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",

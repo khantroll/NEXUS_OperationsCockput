@@ -25,6 +25,8 @@ runtime behavior is already implemented.
   reducer remains reusable without process or storage dependencies.
 - Added an in-memory session registry primitive for attachment lifecycle and one-writer
   input leases, with explicit expiry and detach revocation.
+- Added a Windows-first `node-pty` host-agent spike with two-session concurrency,
+  bounded replay, attach/detach, read/write modes, and explicit exit observation.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -40,13 +42,17 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (15 passing tests)
+- `npm test` (17 passing tests)
+- Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
+  detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
+  `docs/PTY-SPIKE.md`.
 
 ## Next unfinished work
 
-1. Add the executable Windows ConPTY host-agent/supervisor spike and record its results.
-2. Add persistence-free lifecycle failure/recovery tests and durable replay retention.
-3. Add CI and only then begin the Electron shell spike.
+1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
+2. Add persistence-free lifecycle failure/recovery tests and connect host sessions to the
+   existing panel lifecycle reducer.
+3. Add CI and begin the minimal Electron/React shell only after the host boundary is stable.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,

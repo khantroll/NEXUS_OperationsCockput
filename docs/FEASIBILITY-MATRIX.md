@@ -1,10 +1,12 @@
 # Feasibility Matrix
-No entries below are claimed as verified. Record test evidence with commit and environment.
+Entries below are evidence-backed only to the extent stated in their status; limited rows
+must not be read as full product acceptance. Record test evidence with commit and environment.
 
 | Scenario | Expected assertion | Status |
 |---|---|---|
-| PTY park -> summon -> SnapBack | same sessionId + host process | Not tested |
-| Two CLIs running concurrently | isolated independent PTYs | Not tested |
+| PTY park -> summon -> SnapBack | same sessionId + host process | Limited: host attach/detach/replay passed; panel integration not tested |
+| Two CLIs running concurrently | isolated independent PTYs | Passed in host-agent spike; 2 sessions, distinct PIDs |
+| Explicit PTY termination | process exits and UI can mark exited | Limited: observed exited; node-pty emits cleanup diagnostics |
 | GUI process crash | host-managed PTY remains attachable | Not tested |
 | Host agent crashes | honest status and documented survival | Not tested |
 | Browser view dock -> float in same window | JS counter and scroll unaffected | Not tested |

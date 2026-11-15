@@ -1,0 +1,181 @@
+import * as pty from "node-pty";
+
+export type PtyStatus = "running" | "exited";
+export type AttachmentMode = "read" | "write";
+
+export interface PtySessionSnapshot {
+  sessionId: string;
+  pid: number;
+  status: PtyStatus;
+  exitCode?: number;
+  outputBytes: number;
+}
+
+export interface PtyAttachment {
+  readonly sessionId: string;
+  readonly mode: AttachmentMode;
+  readonly replay: string;
+  onData(listener: (data: string) => void): () => void;
+  write(data: string): void;
+  detach(): void;
+}
+
+export interface PtyTerminationResult {
+  session: PtySessionSnapshot;
+  method: "already-exited" | "interrupt" | "forced-kill";
+}
+
+export interface PtyStartOptions {
+  sessionId?: string;
+  cwd?: string;
+  cols?: number;
+  rows?: number;
+}
+
+interface ManagedSession {
+  readonly id: string;
+  readonly pty: pty.IPty;
+  readonly chunks: string[];
+  readonly maxOutputBytes: number;
+  outputBytes: number;
+  status: PtyStatus;
+  exitCode?: number;
+  listeners: Set<(data: string) => void>;
+  terminationTimer?: NodeJS.Timeout;
+}
+
+/**
+ * Renderer-independent PTY owner for the Windows host-agent spike.
+ *
+ * This class owns node-pty processes and bounded replay only. It deliberately
+ * has no Electron dependency and does not claim survival of this supervisor
+ * process itself.
+ */
+export class PtySupervisor {
+  private readonly sessions = new Map<string, ManagedSession>();
+
+  public constructor(private readonly maxOutputBytes = 64 * 1024) {
+    if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 1) {
+      throw new RangeError("maxOutputBytes must be a positive integer");
+    }
+  }
+
+  public start(file: string, args: string[], options: PtyStartOptions = {}): PtySessionSnapshot {
+    const sessionId = options.sessionId ?? crypto.randomUUID();
+    if (this.sessions.has(sessionId)) throw new Error(`session already exists: ${sessionId}`);
+    const child = pty.spawn(file, args, {
+      name: "xterm-256color",
+      cols: options.cols ?? 120,
+      rows: options.rows ?? 32,
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      useConpty: true,
+    });
+    const managed: ManagedSession = {
+      id: sessionId,
+      pty: child,
+      chunks: [],
+      maxOutputBytes: this.maxOutputBytes,
+      outputBytes: 0,
+      status: "running",
+      listeners: new Set(),
+    };
+    child.onData((data) => {
+      managed.chunks.push(data);
+      managed.outputBytes += Buffer.byteLength(data);
+      while (managed.outputBytes > managed.maxOutputBytes && managed.chunks.length > 0) {
+        const removed = managed.chunks.shift()!;
+        managed.outputBytes -= Buffer.byteLength(removed);
+      }
+      for (const listener of managed.listeners) listener(data);
+    });
+    child.onExit(({ exitCode }) => {
+      if (managed.terminationTimer) clearTimeout(managed.terminationTimer);
+      managed.status = "exited";
+      managed.exitCode = exitCode;
+    });
+    this.sessions.set(sessionId, managed);
+    return this.snapshotManaged(managed);
+  }
+
+  public attach(sessionId: string, mode: AttachmentMode): PtyAttachment {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    let attached = true;
+    const listeners = new Set<(data: string) => void>();
+    const detach = (): void => {
+      if (!attached) return;
+      attached = false;
+      for (const listener of listeners) managed.listeners.delete(listener);
+      listeners.clear();
+    };
+    return {
+      sessionId,
+      mode,
+      replay: managed.chunks.join(""),
+      onData: (listener) => {
+        if (!attached) throw new Error("attachment is detached");
+        listeners.add(listener);
+        managed.listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+          managed.listeners.delete(listener);
+        };
+      },
+      write: (data) => {
+        if (!attached) throw new Error("attachment is detached");
+        if (mode !== "write") throw new Error("read attachment cannot write");
+        managed.pty.write(data);
+      },
+      detach,
+    };
+  }
+
+  public snapshot(sessionId: string): PtySessionSnapshot {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    return this.snapshotManaged(managed);
+  }
+
+  public async terminate(sessionId: string): Promise<PtyTerminationResult> {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    if (managed.status === "exited") {
+      return { session: this.snapshotManaged(managed), method: "already-exited" };
+    }
+    managed.pty.write("\u0003");
+    if (await this.waitForExit(sessionId, 500)) {
+      return { session: this.snapshotManaged(managed), method: "interrupt" };
+    }
+    managed.pty.kill();
+    await this.waitForExit(sessionId, 1000);
+    return { session: this.snapshotManaged(managed), method: "forced-kill" };
+  }
+
+  public async waitForExit(sessionId: string, timeoutMs = 3000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.snapshot(sessionId).status === "exited") return true;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return this.snapshot(sessionId).status === "exited";
+  }
+
+  /** Release a completed session's PTY and replay memory after callers finish recovery. */
+  public dispose(sessionId: string): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    if (managed.status !== "exited") throw new Error("cannot dispose a running session");
+    if (managed.listeners.size > 0) throw new Error("cannot dispose an attached session");
+    this.sessions.delete(sessionId);
+  }
+
+  private snapshotManaged(managed: ManagedSession): PtySessionSnapshot {
+    return {
+      sessionId: managed.id,
+      pid: managed.pty.pid,
+      status: managed.status,
+      ...(managed.exitCode === undefined ? {} : { exitCode: managed.exitCode }),
+      outputBytes: managed.outputBytes,
+    };
+  }
+}
