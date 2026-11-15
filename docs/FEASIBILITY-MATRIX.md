@@ -4,7 +4,7 @@ must not be read as full product acceptance. Record test evidence with commit an
 
 | Scenario | Expected assertion | Status |
 |---|---|---|
-| PTY park -> summon -> SnapBack | same sessionId + host process | Limited: host attach/detach/replay passed; panel integration not tested |
+| PTY park -> summon -> SnapBack | same sessionId + host process | Limited: reducer + live host integration passed; renderer integration not tested |
 | Two CLIs running concurrently | isolated independent PTYs | Passed in host-agent spike; 2 sessions, distinct PIDs |
 | Explicit PTY termination | process exits and UI can mark exited | Limited: observed exited; node-pty emits cleanup diagnostics |
 | GUI process crash | host-managed PTY remains attachable | Not tested |

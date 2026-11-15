@@ -1,0 +1,10 @@
+{
+  "name": "@nexus/integration",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@nexus/core": "0.1.0",
+    "@nexus/host-agent": "0.1.0"
+  }
+}

@@ -38,5 +38,6 @@ The focused host-agent tests are in
 - Renderer reload survival has not been demonstrated because Electron is not implemented.
 - Supervisor-process crash, machine restart, and host-agent recovery have not been tested
   and must not be claimed.
-- SQLite metadata, durable restart recovery, and lifecycle-reducer integration remain
-  unfinished.
+- SQLite metadata, durable restart recovery, renderer lifecycle integration, and production
+  attachment authorization remain unfinished. The separate M0 integration test covers only
+  reducer/host co-execution.

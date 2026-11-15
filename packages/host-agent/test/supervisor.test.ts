@@ -76,3 +76,13 @@ test("output replay is bounded and termination is explicit", async () => {
   assert.equal(termination.session.status, "exited");
   supervisor.dispose(session.sessionId);
 });
+
+test("disposal requires every attachment to detach", async () => {
+  const supervisor = new PtySupervisor(64);
+  const session = supervisor.start(shell, ["/d", "/c", "echo", "dispose-test"], { sessionId: "pty-dispose" });
+  await supervisor.waitForExit(session.sessionId);
+  const attachment = supervisor.attach(session.sessionId, "read");
+  assert.throws(() => supervisor.dispose(session.sessionId), /attached session/);
+  attachment.detach();
+  supervisor.dispose(session.sessionId);
+});

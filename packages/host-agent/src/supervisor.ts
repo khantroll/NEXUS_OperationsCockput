@@ -41,6 +41,8 @@ interface ManagedSession {
   status: PtyStatus;
   exitCode?: number;
   listeners: Set<(data: string) => void>;
+  attachmentCount: number;
+  disposed: boolean;
   terminationTimer?: NodeJS.Timeout;
 }
 
@@ -78,6 +80,8 @@ export class PtySupervisor {
       outputBytes: 0,
       status: "running",
       listeners: new Set(),
+      attachmentCount: 0,
+      disposed: false,
     };
     child.onData((data) => {
       managed.chunks.push(data);
@@ -100,11 +104,14 @@ export class PtySupervisor {
   public attach(sessionId: string, mode: AttachmentMode): PtyAttachment {
     const managed = this.sessions.get(sessionId);
     if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    if (managed.disposed) throw new Error("session has been disposed");
+    managed.attachmentCount += 1;
     let attached = true;
     const listeners = new Set<(data: string) => void>();
     const detach = (): void => {
       if (!attached) return;
       attached = false;
+      managed.attachmentCount -= 1;
       for (const listener of listeners) managed.listeners.delete(listener);
       listeners.clear();
     };
@@ -113,7 +120,7 @@ export class PtySupervisor {
       mode,
       replay: managed.chunks.join(""),
       onData: (listener) => {
-        if (!attached) throw new Error("attachment is detached");
+        if (!attached || managed.disposed) throw new Error("attachment is detached");
         listeners.add(listener);
         managed.listeners.add(listener);
         return () => {
@@ -122,7 +129,7 @@ export class PtySupervisor {
         };
       },
       write: (data) => {
-        if (!attached) throw new Error("attachment is detached");
+        if (!attached || managed.disposed) throw new Error("attachment is detached");
         if (mode !== "write") throw new Error("read attachment cannot write");
         managed.pty.write(data);
       },
@@ -147,7 +154,9 @@ export class PtySupervisor {
       return { session: this.snapshotManaged(managed), method: "interrupt" };
     }
     managed.pty.kill();
-    await this.waitForExit(sessionId, 1000);
+    if (!(await this.waitForExit(sessionId, 1000))) {
+      throw new Error(`session did not exit after forced termination: ${sessionId}`);
+    }
     return { session: this.snapshotManaged(managed), method: "forced-kill" };
   }
 
@@ -165,7 +174,15 @@ export class PtySupervisor {
     const managed = this.sessions.get(sessionId);
     if (!managed) throw new Error(`unknown session: ${sessionId}`);
     if (managed.status !== "exited") throw new Error("cannot dispose a running session");
-    if (managed.listeners.size > 0) throw new Error("cannot dispose an attached session");
+    if (managed.attachmentCount > 0) throw new Error("cannot dispose an attached session");
+    managed.disposed = true;
+    // node-pty does not expose a separate close method; kill releases the
+    // native ConPTY handle even when the child already exited.
+    try {
+      managed.pty.kill();
+    } catch {
+      // The process is already exited; registry disposal remains safe.
+    }
     this.sessions.delete(sessionId);
   }
 
