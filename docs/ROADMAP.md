@@ -1,7 +1,8 @@
 # Development Roadmap
-Status: Proposed. Milestones are gated on verified evidence, not calendar estimates.
+Status: Active on `feature/m0-foundation`. Milestones are gated on verified evidence, not
+calendar estimates.
 
-## M0 — Foundation and feasibility [NEXT]
+## M0 — Foundation and feasibility [IN PROGRESS]
 - Define package boundaries and threat model; TypeScript monorepo, formatting/lint/typecheck and Windows/Linux CI.
 - Electron + React + Dockview proof: split tabs, floating pane, independent native pop-out, serialize/restore.
 - Host-owned Windows ConPTY proof: 2 PTYs, session registry and attach/detach, process survives **desktop UI crash**.

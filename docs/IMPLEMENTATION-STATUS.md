@@ -2,6 +2,10 @@
 
 Status: M0 implementation in progress | 2026-11-15
 
+The current architectural decisions are recorded in `docs/DECISIONS.md` (ADR-008 through
+ADR-012). They are accepted constraints for this milestone, not evidence that the related
+runtime behavior is already implemented.
+
 ## Recovered baseline
 
 - `main` contained only the repository initialization commit.
@@ -40,8 +44,8 @@ Validated locally on Windows with Node 24.21.0:
 
 ## Next unfinished work
 
-1. Add persistence-free lifecycle failure/recovery tests and durable replay retention.
-2. Add the executable host-agent/PTY spike and record its results in the feasibility matrix.
+1. Add the executable Windows ConPTY host-agent/supervisor spike and record its results.
+2. Add persistence-free lifecycle failure/recovery tests and durable replay retention.
 3. Add CI and only then begin the Electron shell spike.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
