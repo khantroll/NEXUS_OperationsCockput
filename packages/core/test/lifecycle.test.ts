@@ -111,6 +111,39 @@ test("omitting an authorization policy fails closed", () => {
   assert.equal(transition.result.reason, "unauthorized");
 });
 
+test("completed request replay is bounded by the configured retention", () => {
+  const processor = new PanelCommandProcessor(() => true, { maxCompletedRequests: 1 });
+  const first = command({ op: "park", panelId: panel.panelId }, panel.revision);
+  const firstResult = processor.process(panel, first);
+  const second = command(
+    { op: "summon", panelId: panel.panelId, targetSurface: "main" },
+    firstResult.record.revision,
+  );
+  const secondResult = processor.process(firstResult.record, second);
+
+  // The first entry was evicted, so it is evaluated as a fresh stale command
+  // against the committed record rather than replaying or re-executing it.
+  const afterEviction = processor.process(secondResult.record, first);
+  assert.equal(afterEviction.result.accepted, false);
+  assert.equal(afterEviction.result.reason, "stale-revision");
+});
+
+test("retries are re-authorized even when the result is cached", () => {
+  let allowed = true;
+  const processor = new PanelCommandProcessor(() => allowed);
+  const envelope = command({ op: "park", panelId: panel.panelId }, panel.revision);
+  assert.equal(processor.process(panel, envelope).result.accepted, true);
+  allowed = false;
+  const retry = processor.process(panel, envelope);
+  assert.equal(retry.result.accepted, false);
+  assert.equal(retry.result.reason, "unauthorized");
+});
+
+test("replay retention must be a positive integer", () => {
+  assert.throws(() => new PanelCommandProcessor(() => true, { maxCompletedRequests: 0 }), RangeError);
+  assert.throws(() => new PanelCommandProcessor(() => true, { maxCompletedRequests: 1.5 }), RangeError);
+});
+
 test("invalid commands do not mutate the current record", () => {
   const transition = applyPanelCommand(
     panel,

@@ -13,6 +13,11 @@ export interface PanelTransition {
 
 export type AuthorizePanelCommand = (actorId: string, command: PanelCommand) => boolean;
 
+export interface PanelCommandProcessorOptions {
+  /** Maximum number of completed request IDs retained for retry replay. */
+  maxCompletedRequests?: number;
+}
+
 function accepted(requestId: string, record: PanelRecord): PanelTransition {
   return {
     record,
@@ -118,23 +123,40 @@ export function applyPanelCommand(
  */
 export class PanelCommandProcessor {
   private readonly completed = new Map<string, { fingerprint: string; transition: PanelTransition }>();
+  private readonly maxCompletedRequests: number;
 
   /** Callers must provide policy; omission fails closed. */
-  public constructor(private readonly authorize: AuthorizePanelCommand = () => false) {}
+  public constructor(
+    private readonly authorize: AuthorizePanelCommand = () => false,
+    options: PanelCommandProcessorOptions = {},
+  ) {
+    this.maxCompletedRequests = options.maxCompletedRequests ?? 1024;
+    if (!Number.isInteger(this.maxCompletedRequests) || this.maxCompletedRequests < 1) {
+      throw new RangeError("maxCompletedRequests must be a positive integer");
+    }
+  }
 
   public process(current: PanelRecord, envelope: CommandEnvelope<PanelCommand>): PanelTransition {
     const fingerprint = JSON.stringify([envelope.actorId, envelope.expectedRevision, envelope.payload]);
     const previous = this.completed.get(envelope.requestId);
     if (previous) {
-      return previous.fingerprint === fingerprint
+      if (previous.fingerprint !== fingerprint) {
+        return rejected(envelope.requestId, current, "invalid-command");
+      }
+      return this.authorize(envelope.actorId, envelope.payload)
         ? previous.transition
-        : rejected(envelope.requestId, current, "invalid-command");
+        : rejected(envelope.requestId, current, "unauthorized");
     }
 
     const transition = this.authorize(envelope.actorId, envelope.payload)
       ? applyPanelCommand(current, envelope)
       : rejected(envelope.requestId, current, "unauthorized");
     this.completed.set(envelope.requestId, { fingerprint, transition });
+    while (this.completed.size > this.maxCompletedRequests) {
+      const oldest = this.completed.keys().next().value;
+      if (oldest === undefined) break;
+      this.completed.delete(oldest);
+    }
     return transition;
   }
 }

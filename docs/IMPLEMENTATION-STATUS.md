@@ -22,8 +22,10 @@ Status: M0 implementation in progress | 2026-11-15
 - Added an in-memory session registry primitive for attachment lifecycle and one-writer
   input leases, with explicit expiry and detach revocation.
 - The processor fails closed without an explicit authorization policy. Request replay is
-  process-local and intentionally unbounded only for this prototype; durable storage and
-  retention limits belong to the persistence milestone.
+  process-local with a configurable bounded retention; durable storage and restart recovery
+  still belong to the persistence milestone.
+- Cached retries are re-authorized. If a request ID is evicted, the optimistic revision guard
+  is the safety boundary against re-execution; callers must use unique request IDs.
 - Kept lifecycle transitions independent of session/process execution; no transition can
   spawn or terminate a backend session.
 - Added Node test coverage for state transitions, revision rejection, idempotency, and
@@ -34,7 +36,7 @@ Status: M0 implementation in progress | 2026-11-15
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (8 passing tests)
+- `npm test` (13 passing tests)
 
 ## Next unfinished work
 
