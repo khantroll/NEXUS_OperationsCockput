@@ -19,6 +19,8 @@ Status: M0 implementation in progress | 2026-11-15
 - Enforced optimistic revision guards and idempotent repeated presentation commands.
 - Added a command-boundary processor for authorization and request-id replay; the pure
   reducer remains reusable without process or storage dependencies.
+- Added an in-memory session registry primitive for attachment lifecycle and one-writer
+  input leases, with explicit expiry and detach revocation.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local and intentionally unbounded only for this prototype; durable storage and
   retention limits belong to the persistence milestone.
@@ -36,10 +38,9 @@ Validated locally on Windows with Node 24.21.0:
 
 ## Next unfinished work
 
-1. Add a typed session registry boundary and explicit attachment/input-lease reducer.
-2. Add persistence-free lifecycle failure/recovery tests and durable replay retention.
-3. Add the executable host-agent/PTY spike and record its results in the feasibility matrix.
-4. Add CI and only then begin the Electron shell spike.
+1. Add persistence-free lifecycle failure/recovery tests and durable replay retention.
+2. Add the executable host-agent/PTY spike and record its results in the feasibility matrix.
+3. Add CI and only then begin the Electron shell spike.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,
