@@ -26,6 +26,8 @@ export interface PanelRecord {
   placement: PresentationState;
   homeAnchor: HomeAnchor;
   revision: number;
+  /** Active presentation surface, absent while parked or docked in the home group. */
+  surfaceId?: string;
   windowId?: string;
 }
 
