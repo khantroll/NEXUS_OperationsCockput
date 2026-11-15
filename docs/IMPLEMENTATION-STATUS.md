@@ -36,7 +36,7 @@ Status: M0 implementation in progress | 2026-11-15
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (13 passing tests)
+- `npm test` (15 passing tests)
 
 ## Next unfinished work
 
