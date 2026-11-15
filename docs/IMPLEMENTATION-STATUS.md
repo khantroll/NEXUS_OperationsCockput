@@ -36,6 +36,8 @@ runtime behavior is already implemented.
 - Added a narrow preload host bridge for demo-session start/status/attach/detach and bounded
   output events. It is origin- and identifier-validated; the supervisor still runs in the
   Electron main process for this lab and is not claimed durable across main-process failure.
+- Added renderer-load auto-reconnect to the existing demo session; this is a code path,
+  not yet an automated Electron reload demonstration.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.

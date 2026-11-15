@@ -21,7 +21,7 @@ Not yet claimed:
 
 - The lab supervisor currently runs in Electron main, not a separately supervised host
   process; main-process crash survival is therefore unclaimed.
-- Renderer reload/reconnect restoration is not yet demonstrated, although the main-process
-  session ownership boundary is in place.
+- The renderer now automatically requests a fresh attachment to the existing main-process
+  demo session on load. Actual Electron reload/reconnect runtime evidence is still pending.
 - No SQLite persistence or real terminal view is connected to the shell.
 - No production packaging or code signing is configured.

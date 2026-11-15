@@ -46,9 +46,6 @@ function App(): React.JSX.Element {
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
   const [hostOutput, setHostOutput] = useState("");
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
-  useEffect(() => window.nexusHost.onData((payload) => {
-    if (payload.attachmentId === attachmentId) setHostOutput((current) => (current + payload.data).slice(-4000));
-  }), [attachmentId]);
   const dispatch = (payload: PanelCommand): void => {
     const transition = applyPanelCommand(panel, command(panel, payload));
     if (transition.result.accepted) setPanel(transition.record);
@@ -58,6 +55,7 @@ function App(): React.JSX.Element {
     const session = await window.nexusHost.startDemoSession();
     const attached = await window.nexusHost.attach(session.sessionId);
     setHostSession(session);
+    setPanel((current) => ({ ...current, sessionId: session.sessionId }));
     setAttachmentId(attached.attachmentId);
     setHostOutput(attached.replay);
   };
@@ -65,6 +63,16 @@ function App(): React.JSX.Element {
     if (attachmentId) await window.nexusHost.detach(attachmentId);
     setAttachmentId(null);
   };
+  useEffect(() => {
+    const unsubscribe = window.nexusHost.onData((payload) => {
+      if (payload.attachmentId === attachmentId) setHostOutput((current) => (current + payload.data).slice(-4000));
+    });
+    if (attachmentId === null) void connectHost();
+    return unsubscribe;
+  // The bridge owns cleanup when the renderer is reloaded; this subscription only
+  // needs to follow the current attachment ID for the lifetime of this renderer.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachmentId]);
 
   return React.createElement(
     "main",
