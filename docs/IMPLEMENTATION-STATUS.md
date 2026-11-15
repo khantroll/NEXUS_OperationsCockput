@@ -32,8 +32,10 @@ runtime behavior is already implemented.
 - Added deterministic SnapBack anchor resolution for missing groups and displays, including
   explicit fallback markers without mutating persisted layout state.
 - Added a minimal hardened Electron/React desktop shell with local lifecycle controls;
-  build/typecheck and dependency audit pass, but host IPC and renderer recovery are not
-  implemented. See `docs/DESKTOP-SHELL.md`.
+  build/typecheck and dependency audit pass. See `docs/DESKTOP-SHELL.md`.
+- Added a narrow preload host bridge for demo-session start/status/attach/detach and bounded
+  output events. It is origin- and identifier-validated; the supervisor still runs in the
+  Electron main process for this lab and is not claimed durable across main-process failure.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -59,10 +61,9 @@ Validated locally on Windows with Node 24.21.0:
 ## Next unfinished work
 
 1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
-2. Add persistence-free lifecycle failure/recovery tests and connect renderer reload/recovery
-   to the existing panel lifecycle reducer.
-3. Add host IPC/session attachment to the Electron shell, then test renderer reload recovery.
-4. Add CI before declaring M0 complete.
+2. Add persistence-free lifecycle failure/recovery tests and test renderer reload/recovery
+   against the existing panel lifecycle reducer and host bridge.
+3. Add CI before declaring M0 complete.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,

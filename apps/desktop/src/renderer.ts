@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { CommandEnvelope, PanelCommand, PanelRecord } from "../../../packages/contracts/src/index.js";
 import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
@@ -6,6 +6,13 @@ import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
 declare global {
   interface Window {
     nexusShell: { version: string; capabilities: string[] };
+    nexusHost: {
+      startDemoSession: () => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number }>;
+      status: (sessionId: string) => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number }>;
+      attach: (sessionId: string) => Promise<{ attachmentId: string; replay: string }>;
+      detach: (attachmentId: string) => Promise<void>;
+      onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
+    };
   }
 }
 
@@ -36,9 +43,27 @@ function command(panel: PanelRecord, payload: PanelCommand): CommandEnvelope<Pan
 
 function App(): React.JSX.Element {
   const [panel, setPanel] = useState(initialPanel);
+  const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
+  const [hostOutput, setHostOutput] = useState("");
+  const [attachmentId, setAttachmentId] = useState<string | null>(null);
+  useEffect(() => window.nexusHost.onData((payload) => {
+    if (payload.attachmentId === attachmentId) setHostOutput((current) => (current + payload.data).slice(-4000));
+  }), [attachmentId]);
   const dispatch = (payload: PanelCommand): void => {
     const transition = applyPanelCommand(panel, command(panel, payload));
     if (transition.result.accepted) setPanel(transition.record);
+  };
+  const connectHost = async (): Promise<void> => {
+    if (attachmentId) await window.nexusHost.detach(attachmentId);
+    const session = await window.nexusHost.startDemoSession();
+    const attached = await window.nexusHost.attach(session.sessionId);
+    setHostSession(session);
+    setAttachmentId(attached.attachmentId);
+    setHostOutput(attached.replay);
+  };
+  const disconnectHost = async (): Promise<void> => {
+    if (attachmentId) await window.nexusHost.detach(attachmentId);
+    setAttachmentId(null);
   };
 
   return React.createElement(
@@ -61,7 +86,7 @@ function App(): React.JSX.Element {
         React.createElement("div", { style: styles.sessionCard },
           React.createElement("strong", null, "Presentation demo"),
           React.createElement("span", { style: styles.muted }, "session · "+panel.sessionId),
-          React.createElement("span", { style: styles.running }, "● local shell state"),
+          React.createElement("span", { style: styles.running }, hostSession ? "● "+hostSession.status+" · pid "+hostSession.pid : "● host bridge idle"),
         ),
       ),
       React.createElement("section", { style: styles.canvas },
@@ -74,8 +99,10 @@ function App(): React.JSX.Element {
             ),
             React.createElement("span", { style: styles.revision }, "rev "+panel.revision),
           ),
-          React.createElement("pre", { style: styles.terminal }, "$ nexus presentation\n> sessionId: "+panel.sessionId+"\n> host-agent IPC is not connected in this shell spike"),
+          React.createElement("pre", { style: styles.terminal }, hostOutput || "$ nexus presentation\n> sessionId: "+panel.sessionId+"\n> connect the read-only host bridge to observe bounded PTY output"),
           React.createElement("div", { style: styles.controls },
+            React.createElement("button", { onClick: () => { void connectHost(); } }, "Connect host"),
+            React.createElement("button", { onClick: () => { void disconnectHost(); } }, "Disconnect view"),
             React.createElement("button", { onClick: () => dispatch({ op: "park", panelId: panel.panelId }) }, "Park"),
             React.createElement("button", { onClick: () => dispatch({ op: "summon", panelId: panel.panelId, targetSurface: "main" }) }, "Summon"),
             React.createElement("button", { onClick: () => dispatch({ op: "snapBack", panelId: panel.panelId }) }, "SnapBack"),

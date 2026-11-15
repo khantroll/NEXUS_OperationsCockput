@@ -6,6 +6,10 @@ Status: build-validated laboratory shell | 2026-11-15
 window and hardened preload boundary; Vite builds the React renderer. The renderer uses
 the existing panel lifecycle reducer for local Park, Summon, and SnapBack controls.
 
+The preload also exposes a narrow, read-only demo host bridge for starting or reattaching
+to the main-process supervisor's demo session. It validates the renderer file origin and
+session/attachment identifiers; it does not expose arbitrary command execution.
+
 Validated:
 
 - `npm run build --workspace @nexus/desktop`
@@ -15,7 +19,9 @@ Validated:
 
 Not yet claimed:
 
-- No host-agent IPC is exposed through preload.
-- No renderer reload/reconnect restoration is implemented.
+- The lab supervisor currently runs in Electron main, not a separately supervised host
+  process; main-process crash survival is therefore unclaimed.
+- Renderer reload/reconnect restoration is not yet demonstrated, although the main-process
+  session ownership boundary is in place.
 - No SQLite persistence or real terminal view is connected to the shell.
 - No production packaging or code signing is configured.
