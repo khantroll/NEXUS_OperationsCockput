@@ -5,7 +5,8 @@
   "description": "NEXUS Operations Cockpit foundation",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -15,5 +16,9 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
+  },
+  "allowScripts": {
+    "electron@45.3.2": true,
+    "esbuild@0.28.2": true
   }
 }

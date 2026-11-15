@@ -1,0 +1,23 @@
+{
+  "name": "@nexus/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "build": "npm run typecheck && tsc -p tsconfig.main.json && vite build",
+    "start": "electron dist/main/main.js"
+  },
+  "dependencies": {
+    "@nexus/core": "0.1.0",
+    "electron": "^45.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "vite": "^7.0.0"
+  }
+}
