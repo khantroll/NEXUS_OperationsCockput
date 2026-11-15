@@ -29,6 +29,8 @@ runtime behavior is already implemented.
   bounded replay, attach/detach, read/write modes, and explicit exit observation.
 - Added a live integration demonstration connecting the panel reducer to a ConPTY session:
   Park → Summon → SnapBack preserves session ID, PID, and bounded replay without duplication.
+- Added deterministic SnapBack anchor resolution for missing groups and displays, including
+  explicit fallback markers without mutating persisted layout state.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -44,7 +46,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (19 passing tests)
+- `npm test` (21 passing tests)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
