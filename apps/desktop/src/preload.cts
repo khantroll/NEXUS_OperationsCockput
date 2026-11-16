@@ -13,9 +13,13 @@ const host = {
     return () => ipcRenderer.removeListener("nexus:host:data", wrapped);
   },
 };
+const layout = {
+  save: (panels: unknown[]) => ipcRenderer.invoke("nexus:layout:save", panels),
+};
 
 contextBridge.exposeInMainWorld("nexusShell", {
   version: "0.1.0-lab",
   capabilities: ["panel-lifecycle-local"],
 });
 contextBridge.exposeInMainWorld("nexusHost", host);
+contextBridge.exposeInMainWorld("nexusLayout", layout);

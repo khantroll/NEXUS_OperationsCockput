@@ -1,6 +1,6 @@
 # Metadata Storage Spike
 
-Status: implemented metadata prototype | 2026-11-15
+Status: implemented metadata prototype and desktop wiring | 2026-11-15
 
 `@nexus/storage` uses Node 24's SQLite runtime for non-secret session and panel metadata.
 It persists stable IDs, host/process state, recovery markers, panel placement, home anchors,
@@ -13,9 +13,12 @@ Validated:
 - Session and panel metadata survive closing and reopening the SQLite file.
 - Workspace panel listing is deterministic.
 - Storage tests inspect the actual SQLite column set and reject orphan panels.
+- Prior supervisor epochs reconcile to `unknown` process state and `relaunch-only` recovery;
+  no process survival across supervisor failure is claimed.
+- Panel batch writes are transactional and roll back on foreign-key failure.
 
 Not yet implemented:
 
-- Host-agent reconciliation after supervisor restart.
+- Automatic relaunch of sessions after supervisor restart.
 - Transactional layout command integration with the lifecycle processor.
 - Encryption-at-rest policy and OS credential-store integration.

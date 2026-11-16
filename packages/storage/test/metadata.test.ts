@@ -75,3 +75,28 @@ test("metadata rejects panels that reference unknown sessions", () => {
   assert.throws(() => store.savePanel(panel), /FOREIGN KEY constraint failed/);
   store.close();
 });
+
+test("supervisor restart reconciliation marks stale sessions for relaunch", () => {
+  const store = new MetadataStore(":memory:");
+  store.saveSession({ ...session, process: "running", hostBootEpoch: "old-boot" });
+  store.saveSession({ ...session, sessionId: "session-exited", process: "exited", hostBootEpoch: "old-boot" });
+  assert.equal(store.reconcileSupervisorRestart("new-boot"), 1);
+  const reconciled = store.loadSession(session.sessionId);
+  assert.ok(reconciled);
+  assert.equal(reconciled.hostBootEpoch, "old-boot");
+  assert.equal(reconciled.transport, "disconnected");
+  assert.equal(reconciled.process, "unknown");
+  assert.equal(reconciled.recovery, "relaunch-only");
+  assert.notEqual(reconciled.lastObservedAt, session.lastObservedAt);
+  assert.equal(store.loadSession("session-exited")?.process, "exited");
+  store.close();
+});
+
+test("layout batch persistence is transactional", () => {
+  const store = new MetadataStore(":memory:");
+  store.saveSession(session);
+  const invalidPanel = { ...panel, panelId: "panel-invalid", sessionId: "missing-session" };
+  assert.throws(() => store.savePanels([panel, invalidPanel]), /FOREIGN KEY constraint failed/);
+  assert.equal(store.loadPanel(panel.panelId), null);
+  store.close();
+});

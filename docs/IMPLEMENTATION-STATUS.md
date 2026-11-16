@@ -42,6 +42,8 @@ runtime behavior is already implemented.
   deterministic workspace listing, and no secret/output fields.
 - Added an optional supervisor metadata sink that records local PTY start/exit lifecycle state
   without making the supervisor or SQLite process a claim of crash survival.
+- Wired the desktop host to a per-user SQLite database, reconcile prior supervisor epochs as
+  `unknown`/`relaunch-only`, and persist panel batches transactionally at the storage boundary.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -57,7 +59,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (24 passing tests)
+- `npm test` (26 passing tests)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -66,10 +68,10 @@ Validated locally on Windows with Node 24.21.0:
 
 ## Next unfinished work
 
-1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
-2. Wire `MetadataStore` into the desktop host supervisor and add reconciliation/restart tests;
-   transactional layout commands remain separate.
-3. Add CI before declaring M0 complete.
+1. Resolve or isolate the node-pty ConPTY cleanup diagnostic.
+2. Connect transactional layout persistence to the renderer command path and add full desktop
+   restart/recovery demonstrations.
+3. Run the new Windows CI workflow and complete the remaining M0 acceptance checklist.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,

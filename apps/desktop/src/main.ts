@@ -2,12 +2,15 @@ import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent, type WebContents 
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PtySupervisor, type PtyAttachment } from "@nexus/host-agent/supervisor";
+import { MetadataStore } from "@nexus/storage/metadata";
+import type { PanelRecord } from "@nexus/contracts";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 const rendererPath = path.resolve(currentDirectory, "../renderer/index.html");
 const rendererUrl = pathToFileURL(rendererPath).toString();
-const hostSupervisor = new PtySupervisor(64 * 1024);
+let hostSupervisor: PtySupervisor;
+let metadataStore: MetadataStore;
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
 
@@ -21,6 +24,20 @@ function assertSessionId(sessionId: unknown): asserts sessionId is string {
   if (sessionId !== demoSessionId) {
     throw new Error("invalid session ID");
   }
+}
+
+function isPanelRecord(value: unknown): value is PanelRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const panel = value as Partial<PanelRecord>;
+  const anchor = panel.homeAnchor;
+  return typeof panel.panelId === "string" && typeof panel.sessionId === "string" &&
+    typeof panel.workspaceId === "string" && Number.isInteger(panel.revision) &&
+    ["docked", "focused", "floating", "detached", "parked"].includes(panel.placement ?? "") &&
+    typeof anchor === "object" && anchor !== null && typeof anchor.workspaceId === "string" &&
+    typeof anchor.groupId === "string" && Array.isArray(anchor.splitPath) &&
+    anchor.splitPath.every((part) => typeof part === "string") && Number.isInteger(anchor.tabIndex) &&
+    ["center", "left", "right", "top", "bottom"].includes(anchor.fallbackZone ?? "") &&
+    Number.isInteger(anchor.layoutRevision);
 }
 
 function detachOwner(owner: WebContents): void {
@@ -67,6 +84,11 @@ function registerHostIpc(): void {
     if (!attachment || attachment.owner !== event.sender) throw new Error("unknown attachment");
     attachment.handle.detach();
     attachments.delete(attachmentId);
+  });
+  ipcMain.handle("nexus:layout:save", (event, panels: unknown) => {
+    assertRenderer(event);
+    if (!Array.isArray(panels) || !panels.every(isPanelRecord)) throw new Error("invalid layout metadata");
+    metadataStore.savePanels(panels);
   });
 }
 
@@ -133,6 +155,15 @@ function finishSmoke(window: BrowserWindow, code: number): never {
 }
 
 app.whenReady().then(async () => {
+  const hostBootEpoch = `desktop-${process.pid}-${Date.now()}`;
+  metadataStore = new MetadataStore(path.join(app.getPath("userData"), "nexus.sqlite"));
+  metadataStore.reconcileSupervisorRestart(hostBootEpoch);
+  hostSupervisor = new PtySupervisor({
+    maxOutputBytes: 64 * 1024,
+    metadata: metadataStore,
+    hostId: "xenos-windows",
+    hostBootEpoch,
+  });
   registerHostIpc();
   const window = await createWindow();
   if (process.env.NEXUS_DESKTOP_SMOKE === "1") {
@@ -152,4 +183,8 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  metadataStore?.close();
 });

@@ -1,5 +1,5 @@
 import * as pty from "node-pty";
-import type { SessionRecord } from "../../contracts/src/index.js";
+import type { SessionRecord } from "@nexus/contracts";
 
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";

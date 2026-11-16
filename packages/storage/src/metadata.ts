@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { PanelRecord, SessionRecord } from "../../contracts/src/index.js";
+import type { PanelRecord, SessionRecord } from "@nexus/contracts";
 
 export interface StoredPanelSummary extends PanelRecord {}
 
@@ -64,8 +64,64 @@ export class MetadataStore {
     };
   }
 
+  public listSessions(): SessionRecord[] {
+    const rows = this.db.prepare("SELECT session_id FROM sessions ORDER BY session_id").all() as Array<{ session_id: string }>;
+    return rows.flatMap(({ session_id }) => {
+      const session = this.loadSession(session_id);
+      return session ? [session] : [];
+    });
+  }
+
+  /** Mark sessions owned by a prior supervisor epoch as requiring relaunch. */
+  public reconcileSupervisorRestart(hostBootEpoch: string): number {
+    const result = this.db.prepare(`
+      UPDATE sessions
+      SET transport = 'disconnected', process = 'unknown', recovery = 'relaunch-only',
+          last_observed_at = ?
+      WHERE host_boot_epoch <> ? AND process IN ('starting', 'running', 'unknown')
+    `).run(new Date().toISOString(), hostBootEpoch);
+    return Number(result.changes);
+  }
+
   public savePanel(panel: PanelRecord): void {
-    this.db.prepare(`
+    this.savePanelStatement().run(
+      panel.panelId,
+      panel.sessionId,
+      panel.workspaceId,
+      panel.placement,
+      JSON.stringify(panel.homeAnchor),
+      panel.revision,
+      panel.surfaceId ?? null,
+      panel.windowId ?? null,
+    );
+  }
+
+  /** Atomically persist a layout snapshot, rolling back all panels on failure. */
+  public savePanels(panels: readonly PanelRecord[]): void {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const statement = this.savePanelStatement();
+      for (const panel of panels) {
+        statement.run(
+          panel.panelId,
+          panel.sessionId,
+          panel.workspaceId,
+          panel.placement,
+          JSON.stringify(panel.homeAnchor),
+          panel.revision,
+          panel.surfaceId ?? null,
+          panel.windowId ?? null,
+        );
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private savePanelStatement() {
+    return this.db.prepare(`
       INSERT INTO panels (
         panel_id, session_id, workspace_id, placement, home_anchor,
         revision, surface_id, window_id
@@ -78,16 +134,7 @@ export class MetadataStore {
         revision = excluded.revision,
         surface_id = excluded.surface_id,
         window_id = excluded.window_id
-    `).run(
-      panel.panelId,
-      panel.sessionId,
-      panel.workspaceId,
-      panel.placement,
-      JSON.stringify(panel.homeAnchor),
-      panel.revision,
-      panel.surfaceId ?? null,
-      panel.windowId ?? null,
-    );
+    `);
   }
 
   public loadPanel(panelId: string): PanelRecord | null {

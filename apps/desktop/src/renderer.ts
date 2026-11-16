@@ -13,6 +13,7 @@ declare global {
       detach: (attachmentId: string) => Promise<void>;
       onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
     };
+    nexusLayout: { save: (panels: PanelRecord[]) => Promise<void> };
   }
 }
 
@@ -46,16 +47,24 @@ function App(): React.JSX.Element {
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
   const [hostOutput, setHostOutput] = useState("");
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
+  const persistPanel = (nextPanel: PanelRecord): void => {
+    if (nextPanel.sessionId !== "demo-session") void window.nexusLayout.save([nextPanel]).catch(() => undefined);
+  };
   const dispatch = (payload: PanelCommand): void => {
     const transition = applyPanelCommand(panel, command(panel, payload));
-    if (transition.result.accepted) setPanel(transition.record);
+    if (transition.result.accepted) {
+      setPanel(transition.record);
+      persistPanel(transition.record);
+    }
   };
   const connectHost = async (): Promise<void> => {
     if (attachmentId) await window.nexusHost.detach(attachmentId);
     const session = await window.nexusHost.startDemoSession();
     const attached = await window.nexusHost.attach(session.sessionId);
     setHostSession(session);
-    setPanel((current) => ({ ...current, sessionId: session.sessionId }));
+    const nextPanel = { ...panel, sessionId: session.sessionId };
+    setPanel(nextPanel);
+    persistPanel(nextPanel);
     setAttachmentId(attached.attachmentId);
     setHostOutput(attached.replay);
   };

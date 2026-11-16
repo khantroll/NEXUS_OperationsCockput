@@ -22,5 +22,6 @@ Not yet claimed:
 
 - The lab supervisor currently runs in Electron main, not a separately supervised host
   process; main-process crash survival is therefore unclaimed.
-- No SQLite persistence or real terminal view is connected to the shell.
+- The shell now opens a per-user SQLite metadata database and records PTY lifecycle metadata;
+  durable process survival across supervisor failure and a full terminal renderer remain out of scope.
 - No production packaging or code signing is configured.

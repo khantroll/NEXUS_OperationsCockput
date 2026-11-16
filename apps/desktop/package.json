@@ -11,8 +11,10 @@
     "smoke:reload": "npm run build && node scripts/run-smoke.mjs"
   },
   "dependencies": {
+    "@nexus/contracts": "0.1.0",
     "@nexus/core": "0.1.0",
     "@nexus/host-agent": "0.1.0",
+    "@nexus/storage": "0.1.0",
     "electron": "^45.3.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
