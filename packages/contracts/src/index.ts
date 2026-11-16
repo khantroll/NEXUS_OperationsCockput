@@ -49,6 +49,14 @@ export interface CliProfileRecord {
   cwd?: string;
 }
 
+/** Persisted launcher arguments must remain configuration, never a secret transport. */
+export function assertNonSecretCliArguments(args: readonly string[]): void {
+  const secretShape = /(?:^|[-_])(?:token|password|secret|api[-_]?key|authorization|cookie|credential)(?:$|=|:)/i;
+  if (args.some((arg) => secretShape.test(arg) || /^Bearer\s+/i.test(arg))) {
+    throw new Error("profile arguments cannot contain credential-shaped values");
+  }
+}
+
 export interface SessionRecord {
   sessionId: string;
   hostId: string;

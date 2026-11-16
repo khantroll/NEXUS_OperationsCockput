@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PtySupervisor, type AttachmentMode, type PtyAttachment } from "@nexus/host-agent/supervisor";
 import { MetadataStore } from "@nexus/storage/metadata";
-import type { PanelRecord, WorkspaceRecord } from "@nexus/contracts";
+import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type WorkspaceRecord } from "@nexus/contracts";
+import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -22,7 +23,7 @@ function assertRenderer(event: IpcMainInvokeEvent): void {
 }
 
 function assertSessionId(sessionId: unknown): asserts sessionId is string {
-  if (sessionId !== demoSessionId) {
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
     throw new Error("invalid session ID");
   }
 }
@@ -49,12 +50,33 @@ function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
     typeof workspace.createdAt === "string" && typeof workspace.lastOpenedAt === "string";
 }
 
+function isCliProfileRecord(value: unknown): value is CliProfileRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const profile = value as Partial<CliProfileRecord>;
+  return typeof profile.profileId === "string" && profile.profileId.length > 0 &&
+    typeof profile.name === "string" && profile.name.trim().length > 0 &&
+    (profile.executable === "claude" || profile.executable === "codex" || profile.executable === "shell") &&
+    Array.isArray(profile.args) && profile.args.every((arg) => typeof arg === "string") &&
+    (profile.cwd === undefined || typeof profile.cwd === "string") &&
+    (() => { try { assertNonSecretCliArguments(profile.args); return true; } catch { return false; } })();
+}
+
 function detachOwner(owner: WebContents): void {
   for (const [attachmentId, attachment] of attachments) {
     if (attachment.owner === owner) {
       attachment.handle.detach();
       attachments.delete(attachmentId);
       if (writerBySession.get(attachment.sessionId) === attachmentId) writerBySession.delete(attachment.sessionId);
+    }
+  }
+}
+
+function detachSessionAttachments(sessionId: string): void {
+  for (const [attachmentId, attachment] of attachments) {
+    if (attachment.sessionId === sessionId) {
+      attachment.handle.detach();
+      attachments.delete(attachmentId);
+      if (writerBySession.get(sessionId) === attachmentId) writerBySession.delete(sessionId);
     }
   }
 }
@@ -70,6 +92,37 @@ function registerHostIpc(): void {
         sessionId: demoSessionId,
       });
     }
+  });
+  ipcMain.handle("nexus:host:start-profile", (event, profile: unknown, requestedSessionId: unknown = crypto.randomUUID()) => {
+    assertRenderer(event);
+    if (!isCliProfileRecord(profile) || typeof requestedSessionId !== "string" || requestedSessionId.length === 0) {
+      throw new Error("invalid CLI profile request");
+    }
+    const session = hostSupervisor.startProfile(profile, { sessionId: requestedSessionId });
+    metadataStore.saveProfile(profile);
+    return session;
+  });
+  ipcMain.handle("nexus:host:interrupt", async (event, sessionId: unknown) => {
+    assertRenderer(event);
+    assertSessionId(sessionId);
+    return hostSupervisor.interrupt(sessionId);
+  });
+  ipcMain.handle("nexus:host:restart-profile", async (event, sessionId: unknown, profile: unknown) => {
+    assertRenderer(event);
+    assertSessionId(sessionId);
+    if (!isCliProfileRecord(profile)) throw new Error("invalid CLI profile request");
+    const session = await hostSupervisor.restartProfile(sessionId, profile);
+    metadataStore.saveProfile(profile);
+    return session;
+  });
+  ipcMain.handle("nexus:host:terminate", async (event, sessionId: unknown, confirmationToken: unknown) => {
+    assertRenderer(event);
+    assertSessionId(sessionId);
+    if (confirmationToken !== `terminate:${sessionId}`) throw new Error("termination confirmation required");
+    detachSessionAttachments(sessionId);
+    const result = await hostSupervisor.terminate(sessionId);
+    hostSupervisor.dispose(sessionId);
+    return result.session;
   });
   ipcMain.handle("nexus:host:status", (event, sessionId: unknown) => {
     assertRenderer(event);
@@ -117,6 +170,21 @@ function registerHostIpc(): void {
     assertRenderer(event);
     if (typeof panelId !== "string" || panelId.length === 0) throw new Error("invalid panel ID");
     return metadataStore.loadPanel(panelId);
+  });
+  ipcMain.handle("nexus:layout:list", (event, workspaceId: unknown) => {
+    assertRenderer(event);
+    if (typeof workspaceId !== "string" || workspaceId.length === 0) throw new Error("invalid workspace ID");
+    return metadataStore.listPanels(workspaceId);
+  });
+  ipcMain.handle("nexus:layout:export", (event, workspaceId: unknown) => {
+    assertRenderer(event);
+    if (typeof workspaceId !== "string" || workspaceId.length === 0) throw new Error("invalid workspace ID");
+    return exportRedactedLayout(metadataStore.listPanels(workspaceId));
+  });
+  ipcMain.handle("nexus:layout:import", (event, serialized: unknown) => {
+    assertRenderer(event);
+    if (typeof serialized !== "string" || serialized.length > 256 * 1024) throw new Error("invalid layout import");
+    return importRedactedLayout(serialized);
   });
   ipcMain.handle("nexus:workspace:list", (event) => {
     assertRenderer(event);
@@ -181,6 +249,12 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
     homeAnchor: { workspaceId: 'default', groupId: 'terminals', splitPath: ['root', 'center'],
       tabIndex: 0, fallbackZone: 'center', layoutRevision: 1 }
   }])`);
+  const exportedLayout = await evaluate<string>("export redacted layout", "window.nexusLayout.export('default')");
+  if (exportedLayout.includes(demoSessionId) || exportedLayout.includes("windowId") || exportedLayout.includes("surfaceId")) {
+    throw new Error("layout export contained runtime or session identity");
+  }
+  const importedLayout = await evaluate<unknown[]>("import redacted layout", `window.nexusLayout.import(${JSON.stringify(exportedLayout)})`);
+  if (!Array.isArray(importedLayout) || importedLayout.length === 0) throw new Error("layout import returned no panels");
   await new Promise((resolve) => setTimeout(resolve, 700));
   const firstReplay = await evaluate<{ attachmentId: string; replay: string }>("initial replay", "window.nexusHost.attach('desktop-demo-session')");
   if (!firstReplay.replay.includes("ipc-tick-")) throw new Error("initial replay was empty");
@@ -208,6 +282,31 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
     throw new Error(`renderer reload did not recover persisted layout metadata: rendered=${JSON.stringify(renderedPanel)} persisted=${JSON.stringify(persistedPanel)} body=${JSON.stringify(body)}`);
   }
   await evaluate<void>("detach reloaded attachment", `window.nexusHost.detach('${secondAttachment.attachmentId}')`);
+  const lifecycleSessionId = `desktop-profile-smoke-${Date.now()}`;
+  const lifecycleProfile = {
+    profileId: "desktop-profile-smoke",
+    name: "Desktop lifecycle smoke",
+    executable: "shell",
+    args: ["/d", "/c", "node", "-e", "setInterval(() => console.log('profile-loop'), 25)"],
+  };
+  const lifecycleStarted = await evaluate<{ sessionId: string }>("profile start", `window.nexusHost.startProfile(${JSON.stringify(lifecycleProfile)}, '${lifecycleSessionId}')`);
+  const lifecycleAttachment = await evaluate<{ attachmentId: string }>("profile attach", `window.nexusHost.attach('${lifecycleSessionId}')`);
+  await evaluate<unknown>("profile interrupt", `window.nexusHost.interrupt('${lifecycleSessionId}')`);
+  await evaluate<void>("detach before profile restart", `window.nexusHost.detach('${lifecycleAttachment.attachmentId}')`);
+  const restartedProfile = { ...lifecycleProfile, args: ["/d", "/c", "echo", "restart-ok"] };
+  const lifecycleRestarted = await evaluate<{ sessionId: string }>("profile restart", `window.nexusHost.restartProfile('${lifecycleSessionId}', ${JSON.stringify(restartedProfile)})`);
+  if (lifecycleStarted.sessionId !== lifecycleSessionId || lifecycleRestarted.sessionId !== lifecycleSessionId) {
+    throw new Error("profile lifecycle changed the stable session identity");
+  }
+  let restartedAttachment = await evaluate<{ attachmentId: string; replay: string }>("profile replay after restart", `window.nexusHost.attach('${lifecycleSessionId}')`);
+  for (let attempt = 0; attempt < 10 && !restartedAttachment.replay.includes("restart-ok"); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await evaluate<void>("detach replacement replay probe", `window.nexusHost.detach('${restartedAttachment.attachmentId}')`);
+    restartedAttachment = await evaluate<{ attachmentId: string; replay: string }>("retry profile replay after restart", `window.nexusHost.attach('${lifecycleSessionId}')`);
+  }
+  if (!restartedAttachment.replay.includes("restart-ok")) throw new Error("profile restart replay was not recoverable");
+  await evaluate<void>("detach profile attachments", `window.nexusHost.detach('${restartedAttachment.attachmentId}')`);
+  await evaluate<unknown>("profile terminate", `window.nexusHost.terminate('${lifecycleSessionId}', 'terminate:${lifecycleSessionId}')`);
   console.log("NEXUS reload smoke passed", { sessionId: second.sessionId, pid: second.pid });
 }
 

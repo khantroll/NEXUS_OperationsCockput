@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import test from "node:test";
-import type { PanelRecord, SessionRecord } from "../../contracts/src/index.js";
+import type { CliProfileRecord, PanelRecord, SessionRecord } from "../../contracts/src/index.js";
 import type { WorkspaceRecord } from "@nexus/contracts";
 import { MetadataStore } from "../src/metadata.js";
 
@@ -37,6 +37,14 @@ const panel: PanelRecord = {
   revision: 4,
 };
 
+const profile: CliProfileRecord = {
+  profileId: "profile-claude",
+  name: "Claude Code",
+  executable: "claude",
+  args: ["--version"],
+  cwd: "C:\\AMD",
+};
+
 test("session and panel metadata survive store reopen", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "nexus-storage-"));
   const filename = path.join(directory, "metadata.sqlite");
@@ -44,12 +52,14 @@ test("session and panel metadata survive store reopen", () => {
     const first = new MetadataStore(filename);
     first.saveSession(session);
     first.savePanel(panel);
+    first.saveProfile(profile);
     first.close();
 
     const reopened = new MetadataStore(filename);
     assert.deepEqual(reopened.loadSession(session.sessionId), session);
     assert.deepEqual(reopened.loadPanel(panel.panelId), panel);
     assert.deepEqual(reopened.listPanels(panel.workspaceId), [panel]);
+    assert.deepEqual(reopened.loadProfile(profile.profileId), profile);
     reopened.close();
 
     const schema = new DatabaseSync(filename);
@@ -65,6 +75,10 @@ test("session and panel metadata survive store reopen", () => {
       "home_anchor", "panel_id", "placement", "revision", "session_id", "surface_id",
       "window_id", "workspace_id",
     ]);
+    const profileColumns = (schema.prepare("PRAGMA table_info(profiles)").all() as Array<{ name: string }>)
+      .map(({ name }) => name).sort();
+    assert.deepEqual(profileColumns, ["args_json", "cwd", "executable", "name", "profile_id"]);
+    assert.equal(profileColumns.some((name) => /credential|secret|token|password|env/i.test(name)), false);
     schema.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -85,6 +99,13 @@ test("session shelf listing is deterministic and includes recovery state", () =>
 test("metadata rejects panels that reference unknown sessions", () => {
   const store = new MetadataStore(":memory:");
   assert.throws(() => store.savePanel(panel), /FOREIGN KEY constraint failed/);
+  store.close();
+});
+
+test("profile metadata rejects credential-shaped arguments", () => {
+  const store = new MetadataStore(":memory:");
+  assert.throws(() => store.saveProfile({ ...profile, args: ["--api-key=not-for-persistence"] }), /credential-shaped/);
+  assert.equal(store.listProfiles().length, 0);
   store.close();
 });
 
@@ -136,7 +157,7 @@ test("workspace registry persists stable names and deterministic ordering", () =
   store.close();
 });
 
-test("v1 metadata migrates to v2 without losing sessions or panels", () => {
+test("v1 metadata migrates to v3 without losing sessions or panels", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "nexus-storage-migration-"));
   const filename = path.join(directory, "metadata.sqlite");
   try {
@@ -161,10 +182,11 @@ test("v1 metadata migrates to v2 without losing sessions or panels", () => {
     const migrated = new DatabaseSync(filename);
     const version = (migrated.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
     migrated.close();
-    assert.equal(version, 2);
+    assert.equal(version, 3);
     assert.deepEqual(reopened.loadSession(session.sessionId), session);
     assert.deepEqual(reopened.loadPanel(panel.panelId), panel);
     assert.deepEqual(reopened.listWorkspaces(), []);
+    assert.deepEqual(reopened.listProfiles(), []);
     reopened.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });

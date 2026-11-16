@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { PanelRecord, SessionRecord, WorkspaceRecord } from "@nexus/contracts";
+import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type SessionRecord, type WorkspaceRecord } from "@nexus/contracts";
 
 export interface StoredPanelSummary extends PanelRecord {}
 
@@ -100,6 +100,39 @@ export class MetadataStore {
       createdAt: row.created_at,
       lastOpenedAt: row.last_opened_at,
     }));
+  }
+
+  public saveProfile(profile: CliProfileRecord): void {
+    assertNonSecretCliArguments(profile.args);
+    this.db.prepare(`
+      INSERT INTO profiles (profile_id, name, executable, args_json, cwd)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(profile_id) DO UPDATE SET
+        name = excluded.name,
+        executable = excluded.executable,
+        args_json = excluded.args_json,
+        cwd = excluded.cwd
+    `).run(profile.profileId, profile.name, profile.executable, JSON.stringify(profile.args), profile.cwd ?? null);
+  }
+
+  public loadProfile(profileId: string): CliProfileRecord | null {
+    const row = this.db.prepare("SELECT * FROM profiles WHERE profile_id = ?").get(profileId) as ProfileRow | undefined;
+    if (!row) return null;
+    return {
+      profileId: row.profile_id,
+      name: row.name,
+      executable: row.executable as CliProfileRecord["executable"],
+      args: JSON.parse(row.args_json) as string[],
+      ...(row.cwd === null ? {} : { cwd: row.cwd }),
+    };
+  }
+
+  public listProfiles(): CliProfileRecord[] {
+    const rows = this.db.prepare("SELECT profile_id FROM profiles ORDER BY name, profile_id").all() as Array<{ profile_id: string }>;
+    return rows.flatMap(({ profile_id }) => {
+      const profile = this.loadProfile(profile_id);
+      return profile ? [profile] : [];
+    });
   }
 
   /** Delete an empty workspace; panels must be moved or removed explicitly first. */
@@ -240,6 +273,16 @@ export class MetadataStore {
       );
       PRAGMA user_version = 2;
     `);
+    if (version < 3) this.db.exec(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        profile_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        executable TEXT NOT NULL,
+        args_json TEXT NOT NULL,
+        cwd TEXT
+      );
+      PRAGMA user_version = 3;
+    `);
   }
 }
 
@@ -273,4 +316,12 @@ interface WorkspaceRow {
   name: string;
   created_at: string;
   last_opened_at: string;
+}
+
+interface ProfileRow {
+  profile_id: string;
+  name: string;
+  executable: string;
+  args_json: string;
+  cwd: string | null;
 }

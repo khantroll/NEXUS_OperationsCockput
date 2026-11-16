@@ -23,7 +23,7 @@ const tickProgram = "let n=0; setInterval(() => console.log('tick-'+(++n)), 25);
 const nodeInShell = ["/d", "/c", "node", "-e", tickProgram];
 
 test("CLI profiles resolve only allowlisted launchers and absolute workdirs", () => {
-  assert.deepEqual(resolveCliProfile({ profileId: "claude", name: "Claude Code", executable: "claude", args: ["--version"], cwd: "C:\\work" }, "win32"), {
+  assert.deepEqual(resolveCliProfile({ profileId: "claude", name: "Claude Code", executable: "claude", args: ["--version"], cwd: "C:\\work" }, "win32", "cmd.exe", {}), {
     file: "claude.cmd",
     args: ["--version"],
     cwd: "C:\\work",
@@ -35,6 +35,7 @@ test("CLI profiles resolve only allowlisted launchers and absolute workdirs", ()
   assert.throws(() => resolveCliProfile({ profileId: "", name: "bad", executable: "codex", args: [] }), /profile ID/);
   assert.throws(() => resolveCliProfile({ profileId: "bad", name: "bad", executable: "codex", args: [], cwd: "relative" }), /absolute path/);
   assert.throws(() => resolveCliProfile({ profileId: "bad", name: "bad", executable: "codex", args: ["bad\u0000arg"] }), /invalid argument/);
+  assert.throws(() => resolveCliProfile({ profileId: "bad", name: "bad", executable: "codex", args: ["--token=not-for-persistence"] }), /credential-shaped/);
 });
 
 test("a shell profile launches through the supervisor boundary", async () => {
@@ -50,6 +51,45 @@ test("a shell profile launches through the supervisor boundary", async () => {
   assert.match(attachment.replay, /profile-launch/);
   attachment.detach();
   supervisor.dispose(session.sessionId);
+});
+
+test("interrupt, restart, and explicit cleanup preserve stable session identity", async () => {
+  const supervisor = new PtySupervisor(1024);
+  const profile = { profileId: "profile-loop", name: "Loop", executable: "shell" as const, args: ["/d", "/c", "node", "-e", "setInterval(() => console.log('loop'), 25)"] };
+  const first = supervisor.startProfile(profile, { sessionId: "profile-recovery" });
+  let currentSessionId = first.sessionId;
+  try {
+    const interrupted = await supervisor.interrupt(first.sessionId);
+    assert.ok(interrupted.status === "running" || interrupted.status === "exited");
+    const restarted = await supervisor.restartProfile(first.sessionId, { ...profile, args: ["/d", "/c", "echo", "restarted"] });
+    currentSessionId = restarted.sessionId;
+    assert.equal(restarted.sessionId, first.sessionId);
+    await supervisor.waitForExit(restarted.sessionId);
+    supervisor.dispose(restarted.sessionId);
+    assert.throws(() => supervisor.snapshot(first.sessionId), /unknown session/);
+  } finally {
+    try {
+      if (supervisor.snapshot(currentSessionId).status === "running") await supervisor.terminate(currentSessionId);
+    } catch {
+      // The explicit cleanup path may already have disposed the session.
+    }
+    try { supervisor.dispose(currentSessionId); } catch { /* already disposed */ }
+  }
+});
+
+test("restart rejects attached sessions before terminating them", async () => {
+  const supervisor = new PtySupervisor(1024);
+  const profile = { profileId: "attached-loop", name: "Attached loop", executable: "shell" as const, args: ["/d", "/c", "node", "-e", "setInterval(() => {}, 1000)"] };
+  const session = supervisor.startProfile(profile, { sessionId: "attached-restart" });
+  const attachment = supervisor.attach(session.sessionId, "read");
+  try {
+    await assert.rejects(() => supervisor.restartProfile(session.sessionId, { ...profile, args: ["/d", "/c", "echo", "replacement"] }), /attached session/);
+    assert.equal(supervisor.snapshot(session.sessionId).status, "running");
+  } finally {
+    attachment.detach();
+    await supervisor.terminate(session.sessionId);
+    supervisor.dispose(session.sessionId);
+  }
 });
 
 function waitForData(attachment: ReturnType<PtySupervisor["attach"]>, needle: string): Promise<void> {

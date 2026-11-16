@@ -1,6 +1,6 @@
 # Implementation Status
 
-Status: M0 acceptance complete; M1 implementation in progress | 2026-11-15
+Status: M0 acceptance complete; M1 implementation in progress pending final review/CI | 2026-11-16
 
 The current architectural decisions are recorded in `docs/DECISIONS.md` (ADR-008 through
 ADR-012). They are accepted constraints for this milestone, not evidence that the related
@@ -50,6 +50,14 @@ runtime behavior is already implemented.
   renderer attachments remain the default and only one writer is allowed per session.
 - Added keyboard Park/Summon/SnapBack/Set Home controls and portable redacted layout
   export/import that excludes session, surface, and window identity.
+- Added real Claude Code/Codex profile launch panels with stable session identities, renderer
+  reload recovery, lifecycle controls, and per-profile output replay.
+- Added best-effort interrupt, profile restart, explicit confirmation-gated termination, and
+  cleanup smoke coverage. Interrupt may return a still-running session when Ctrl+C is ignored;
+  termination is the explicit escalation path.
+- Added SQLite v3 launcher-profile metadata containing only identifier/display name, executable
+  kind, arguments, and working directory; no credentials, environment, cookies, tokens, or
+  terminal output are persisted.
 - Added an optional supervisor metadata sink that records local PTY start/exit lifecycle state
   without making the supervisor or SQLite process a claim of crash survival.
 - Wired the desktop host to a per-user SQLite database, reconcile prior supervisor epochs as
@@ -69,7 +77,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (33 passing tests; serialized to avoid concurrent ConPTY cleanup races)
+- `npm test` (36 passing tests; serialized to avoid concurrent ConPTY cleanup races)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -90,10 +98,13 @@ Validated locally on Windows with Node 24.21.0:
 - Desktop reload smoke also verifies that read-only input is rejected at the IPC boundary.
 - Layout tests verify redacted exports omit runtime/session identity, and reload smoke passes with
   the keyboard lifecycle controls installed.
+- Desktop reload smoke covers layout export/import, input authorization, profile interrupt/restart/
+  terminate, stable session identity, bounded replay after restart, and attachment cleanup.
 
 ## Remaining limitation
 
-1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
+1. Run the independent read-only M1 review and Windows CI for the final increment.
+2. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
    suppression or replacement is validated.
 
 The current reducer records presentation state only. It does not yet resolve an anchor

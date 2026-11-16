@@ -1,6 +1,7 @@
 import * as pty from "node-pty";
-import type { CliProfileRecord, SessionRecord } from "@nexus/contracts";
+import { assertNonSecretCliArguments, type CliProfileRecord, type SessionRecord } from "@nexus/contracts";
 import path from "node:path";
+import fs from "node:fs";
 
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";
@@ -41,17 +42,25 @@ export interface ResolvedCliProfile {
 }
 
 /** Validate and resolve a non-secret profile into a platform-specific executable invocation. */
-export function resolveCliProfile(profile: CliProfileRecord, platform = process.platform, comSpec = process.env.ComSpec ?? "cmd.exe"): ResolvedCliProfile {
+export function resolveCliProfile(profile: CliProfileRecord, platform = process.platform, comSpec = process.env.ComSpec ?? "cmd.exe", environment: NodeJS.ProcessEnv = process.env): ResolvedCliProfile {
   if (!profile.profileId.trim() || !profile.name.trim()) throw new Error("profile ID and name are required");
   if (!Number.isInteger(profile.args.length) || profile.args.length > 32) throw new Error("profile has too many arguments");
+  assertNonSecretCliArguments(profile.args);
   if (profile.args.some((arg) => arg.includes("\u0000") || arg.length > 512)) throw new Error("profile contains an invalid argument");
   if (profile.cwd !== undefined && (!path.isAbsolute(profile.cwd) || profile.cwd.includes("\u0000"))) {
     throw new Error("profile cwd must be an absolute path");
   }
   const file = profile.executable === "shell"
     ? comSpec
-    : platform === "win32" ? `${profile.executable}.cmd` : profile.executable;
+    : platform === "win32" ? resolveWindowsCli(profile.executable, environment) : profile.executable;
   return { file, args: [...profile.args], ...(profile.cwd === undefined ? {} : { cwd: profile.cwd }) };
+}
+
+function resolveWindowsCli(executable: "claude" | "codex", environment: NodeJS.ProcessEnv): string {
+  const candidates = executable === "claude"
+    ? [environment.USERPROFILE === undefined ? undefined : path.join(environment.USERPROFILE, ".local", "bin", "claude.exe")]
+    : [environment.APPDATA === undefined ? undefined : path.join(environment.APPDATA, "npm", "codex.cmd")];
+  return candidates.find((candidate) => candidate !== undefined && fs.existsSync(candidate)) ?? `${executable}.cmd`;
 }
 
 export interface SessionMetadataSink {
@@ -214,6 +223,31 @@ export class PtySupervisor {
       throw new Error(`session did not exit after forced termination: ${sessionId}`);
     }
     return { session: this.snapshotManaged(managed), method: "forced-kill" };
+  }
+
+  /** Send an interrupt without escalating to a forced kill. */
+  public async interrupt(sessionId: string, timeoutMs = 750): Promise<PtySessionSnapshot> {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    if (managed.status === "exited") return this.snapshotManaged(managed);
+    managed.pty.write("\u0003");
+    await this.waitForExit(sessionId, timeoutMs);
+    return this.snapshotManaged(managed);
+  }
+
+  /** Explicitly clean up an exited session and relaunch its profile under the same stable ID. */
+  public async restartProfile(sessionId: string, profile: CliProfileRecord, options: Omit<PtyStartOptions, "cwd" | "sessionId"> = {}): Promise<PtySessionSnapshot> {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    const resolved = resolveCliProfile(profile);
+    if (managed.attachmentCount > 0) throw new Error("cannot restart an attached session");
+    if (managed.status !== "exited") await this.terminate(sessionId);
+    this.dispose(sessionId);
+    return this.start(resolved.file, resolved.args, {
+      ...options,
+      sessionId,
+      ...(resolved.cwd === undefined ? {} : { cwd: resolved.cwd }),
+    });
   }
 
   public async waitForExit(sessionId: string, timeoutMs = 3000): Promise<boolean> {
