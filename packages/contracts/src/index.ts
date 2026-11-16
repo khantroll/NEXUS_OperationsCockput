@@ -31,6 +31,13 @@ export interface PanelRecord {
   windowId?: string;
 }
 
+export interface WorkspaceRecord {
+  workspaceId: string;
+  name: string;
+  createdAt: string;
+  lastOpenedAt: string;
+}
+
 export interface SessionRecord {
   sessionId: string;
   hostId: string;

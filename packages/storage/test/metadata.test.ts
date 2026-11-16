@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import test from "node:test";
 import type { PanelRecord, SessionRecord } from "../../contracts/src/index.js";
+import type { WorkspaceRecord } from "@nexus/contracts";
 import { MetadataStore } from "../src/metadata.js";
 
 const session: SessionRecord = {
@@ -99,4 +100,62 @@ test("layout batch persistence is transactional", () => {
   assert.throws(() => store.savePanels([panel, invalidPanel]), /FOREIGN KEY constraint failed/);
   assert.equal(store.loadPanel(panel.panelId), null);
   store.close();
+});
+
+test("workspace registry persists stable names and deterministic ordering", () => {
+  const store = new MetadataStore(":memory:");
+  const first: WorkspaceRecord = {
+    workspaceId: "workspace-z",
+    name: "Zeta",
+    createdAt: "2026-11-15T00:00:00.000Z",
+    lastOpenedAt: "2026-11-15T00:00:00.000Z",
+  };
+  const second: WorkspaceRecord = { ...first, workspaceId: "workspace-a", name: "Alpha" };
+  const tie: WorkspaceRecord = { ...first, workspaceId: "workspace-b", name: "Alpha" };
+  store.saveWorkspace(first);
+  store.saveWorkspace(second);
+  store.saveWorkspace(tie);
+  assert.deepEqual(store.listWorkspaces(), [second, tie, first]);
+  assert.deepEqual(store.loadWorkspace(first.workspaceId), first);
+  assert.equal(store.deleteWorkspace(second.workspaceId), true);
+  assert.equal(store.deleteWorkspace(second.workspaceId), false);
+  store.saveSession(session);
+  store.savePanel({ ...panel, workspaceId: first.workspaceId });
+  assert.throws(() => store.deleteWorkspace(first.workspaceId), /workspace has panels/);
+  store.close();
+});
+
+test("v1 metadata migrates to v2 without losing sessions or panels", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "nexus-storage-migration-"));
+  const filename = path.join(directory, "metadata.sqlite");
+  try {
+    const legacy = new DatabaseSync(filename);
+    legacy.exec(`
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY, host_id TEXT NOT NULL, host_boot_epoch TEXT NOT NULL,
+        kind TEXT NOT NULL, transport TEXT NOT NULL, process TEXT NOT NULL, recovery TEXT NOT NULL,
+        created_at TEXT NOT NULL, last_observed_at TEXT NOT NULL, pid INTEGER, exit_code INTEGER
+      );
+      CREATE TABLE panels (
+        panel_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+        placement TEXT NOT NULL, home_anchor TEXT NOT NULL, revision INTEGER NOT NULL,
+        surface_id TEXT, window_id TEXT
+      );
+      PRAGMA user_version = 1;
+    `);
+    legacy.close();
+    const reopened = new MetadataStore(filename);
+    reopened.saveSession(session);
+    reopened.savePanel(panel);
+    const migrated = new DatabaseSync(filename);
+    const version = (migrated.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+    migrated.close();
+    assert.equal(version, 2);
+    assert.deepEqual(reopened.loadSession(session.sessionId), session);
+    assert.deepEqual(reopened.loadPanel(panel.panelId), panel);
+    assert.deepEqual(reopened.listWorkspaces(), []);
+    reopened.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

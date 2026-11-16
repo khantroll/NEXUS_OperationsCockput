@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { PanelRecord, SessionRecord } from "@nexus/contracts";
+import type { PanelRecord, SessionRecord, WorkspaceRecord } from "@nexus/contracts";
 
 export interface StoredPanelSummary extends PanelRecord {}
 
@@ -70,6 +70,43 @@ export class MetadataStore {
       const session = this.loadSession(session_id);
       return session ? [session] : [];
     });
+  }
+
+  public saveWorkspace(workspace: WorkspaceRecord): void {
+    this.db.prepare(`
+      INSERT INTO workspaces (workspace_id, name, created_at, last_opened_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(workspace_id) DO UPDATE SET
+        name = excluded.name,
+        last_opened_at = excluded.last_opened_at
+    `).run(workspace.workspaceId, workspace.name, workspace.createdAt, workspace.lastOpenedAt);
+  }
+
+  public loadWorkspace(workspaceId: string): WorkspaceRecord | null {
+    const row = this.db.prepare("SELECT * FROM workspaces WHERE workspace_id = ?").get(workspaceId) as WorkspaceRow | undefined;
+    return row ? {
+      workspaceId: row.workspace_id,
+      name: row.name,
+      createdAt: row.created_at,
+      lastOpenedAt: row.last_opened_at,
+    } : null;
+  }
+
+  public listWorkspaces(): WorkspaceRecord[] {
+    const rows = this.db.prepare("SELECT * FROM workspaces ORDER BY name, workspace_id").all() as unknown as WorkspaceRow[];
+    return rows.map((row) => ({
+      workspaceId: row.workspace_id,
+      name: row.name,
+      createdAt: row.created_at,
+      lastOpenedAt: row.last_opened_at,
+    }));
+  }
+
+  /** Delete an empty workspace; panels must be moved or removed explicitly first. */
+  public deleteWorkspace(workspaceId: string): boolean {
+    const panelCount = (this.db.prepare("SELECT COUNT(*) AS count FROM panels WHERE workspace_id = ?").get(workspaceId) as { count: number }).count;
+    if (panelCount > 0) throw new Error("workspace has panels");
+    return Number(this.db.prepare("DELETE FROM workspaces WHERE workspace_id = ?").run(workspaceId).changes) > 0;
   }
 
   /** Mark sessions owned by a prior supervisor epoch as requiring relaunch. */
@@ -167,8 +204,7 @@ export class MetadataStore {
   private migrate(): void {
     this.db.exec("PRAGMA foreign_keys = ON;");
     const version = (this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-    if (version >= 1) return;
-    this.db.exec(`
+    if (version < 1) this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         session_id TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
@@ -194,6 +230,15 @@ export class MetadataStore {
         FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
       );
       PRAGMA user_version = 1;
+    `);
+    if (version < 2) this.db.exec(`
+      CREATE TABLE IF NOT EXISTS workspaces (
+        workspace_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_opened_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 2;
     `);
   }
 }
@@ -221,4 +266,11 @@ interface PanelRow {
   revision: number;
   surface_id: string | null;
   window_id: string | null;
+}
+
+interface WorkspaceRow {
+  workspace_id: string;
+  name: string;
+  created_at: string;
+  last_opened_at: string;
 }
