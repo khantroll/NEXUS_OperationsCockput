@@ -3,6 +3,20 @@ import test from "node:test";
 import type { SessionRecord } from "../../contracts/src/index.js";
 import { PtySupervisor, type SessionMetadataSink } from "../src/supervisor.js";
 
+let conptyCleanupDiagnostics = 0;
+process.on("uncaughtException", (error) => {
+  if (error instanceof Error && error.message === "AttachConsole failed") {
+    conptyCleanupDiagnostics += 1;
+    return;
+  }
+  throw error;
+});
+process.on("exit", () => {
+  if (conptyCleanupDiagnostics > 0) {
+    console.warn(`node-pty emitted ${conptyCleanupDiagnostics} known ConPTY cleanup diagnostic(s)`);
+  }
+});
+
 const node = process.execPath;
 const shell = process.env.ComSpec ?? "cmd.exe";
 const tickProgram = "let n=0; setInterval(() => console.log('tick-'+(++n)), 25);";
