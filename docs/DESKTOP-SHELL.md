@@ -14,6 +14,7 @@ Validated:
 
 - `npm run build --workspace @nexus/desktop`
 - `npm run typecheck --workspace @nexus/desktop`
+- `npm run smoke:reload --workspace @nexus/desktop`
 - Electron binary `v45.3.2`
 - `npm audit --omit=dev`: 0 vulnerabilities
 
@@ -21,7 +22,5 @@ Not yet claimed:
 
 - The lab supervisor currently runs in Electron main, not a separately supervised host
   process; main-process crash survival is therefore unclaimed.
-- The renderer now automatically requests a fresh attachment to the existing main-process
-  demo session on load. Actual Electron reload/reconnect runtime evidence is still pending.
 - No SQLite persistence or real terminal view is connected to the shell.
 - No production packaging or code signing is configured.

@@ -55,8 +55,10 @@ interface ManagedSession {
  */
 export class PtySupervisor {
   private readonly sessions = new Map<string, ManagedSession>();
+  private readonly maxOutputBytes: number;
 
-  public constructor(private readonly maxOutputBytes = 64 * 1024) {
+  public constructor(maxOutputBytes = 64 * 1024) {
+    this.maxOutputBytes = maxOutputBytes;
     if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 1) {
       throw new RangeError("maxOutputBytes must be a positive integer");
     }

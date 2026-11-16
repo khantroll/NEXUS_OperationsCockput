@@ -12,7 +12,9 @@ const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
 
 function assertRenderer(event: IpcMainInvokeEvent): void {
-  if (!event.senderFrame || event.senderFrame.url !== rendererUrl) throw new Error("unauthorized renderer origin");
+  if (!event.senderFrame || event.senderFrame.url !== rendererUrl) {
+    throw new Error(`unauthorized renderer origin: ${event.senderFrame?.url ?? "none"}`);
+  }
 }
 
 function assertSessionId(sessionId: unknown): asserts sessionId is string {
@@ -37,7 +39,7 @@ function registerHostIpc(): void {
       return hostSupervisor.snapshot(demoSessionId);
     } catch {
       const shell = process.env.ComSpec ?? "cmd.exe";
-      return hostSupervisor.start(shell, ["/d", "/c", "node", "-e", "let n=0; setInterval(() => console.log('ipc-tick-'+(++n)), 250);"], {
+      return hostSupervisor.start(shell, ["/d", "/c", "node", "-e", "let n=0; setInterval(() => console.log('ipc-tick-'+(++n)), 250); setTimeout(() => process.exit(0), 5000);"], {
         sessionId: demoSessionId,
       });
     }
@@ -68,7 +70,7 @@ function registerHostIpc(): void {
   });
 }
 
-function createWindow(): void {
+async function createWindow(): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -76,7 +78,7 @@ function createWindow(): void {
     minHeight: 640,
     backgroundColor: "#0b1020",
     webPreferences: {
-      preload: path.join(currentDirectory, "preload.js"),
+      preload: path.join(currentDirectory, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -86,14 +88,63 @@ function createWindow(): void {
     if (url !== rendererUrl) event.preventDefault();
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("console-message", (_event, _level, message, line, source) => {
+    console.log(`[renderer ${source}:${line}] ${message}`);
+  });
   window.webContents.on("destroyed", () => detachOwner(window.webContents));
   window.webContents.on("render-process-gone", () => detachOwner(window.webContents));
-  void window.loadFile(rendererPath);
+  await window.loadFile(rendererPath);
+  return window;
 }
 
-app.whenReady().then(() => {
+async function runReloadSmoke(window: BrowserWindow): Promise<void> {
+  const evaluate = async <T>(label: string, script: string): Promise<T> => {
+    try {
+      return await window.webContents.executeJavaScript(script, true) as T;
+    } catch (error) {
+      throw new Error(`${label} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const bridgeType = await evaluate<string>("bridge probe", "typeof window.nexusHost?.startDemoSession");
+  if (bridgeType !== "function") throw new Error(`host bridge unavailable: ${bridgeType}`);
+  const first = await evaluate<{ sessionId: string; pid: number }>("initial start", "window.nexusHost.startDemoSession()");
+  const firstAttachment = await evaluate<{ attachmentId: string; replay: string }>("initial attach", "window.nexusHost.attach('desktop-demo-session')");
+  if (first.sessionId !== demoSessionId || first.pid <= 0) throw new Error("initial host session did not start");
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const firstReplay = await evaluate<{ attachmentId: string; replay: string }>("initial replay", "window.nexusHost.attach('desktop-demo-session')");
+  if (!firstReplay.replay.includes("ipc-tick-")) throw new Error("initial replay was empty");
+  await evaluate<void>("detach initial attachment", `window.nexusHost.detach('${firstAttachment.attachmentId}')`);
+  await evaluate<void>("detach replay attachment", `window.nexusHost.detach('${firstReplay.attachmentId}')`);
+  await window.webContents.reload();
+  await new Promise<void>((resolve) => window.webContents.once("did-finish-load", () => resolve()));
+  const second = await evaluate<{ sessionId: string; pid: number }>("reloaded start", "window.nexusHost.startDemoSession()");
+  const secondAttachment = await evaluate<{ attachmentId: string; replay: string }>("reloaded attach", "window.nexusHost.attach('desktop-demo-session')");
+  if (second.sessionId !== first.sessionId || second.pid !== first.pid) {
+    throw new Error("renderer reload created a duplicate host session");
+  }
+  if (!secondAttachment.replay.includes("ipc-tick-")) throw new Error("reloaded renderer did not recover replay");
+  await evaluate<void>("detach reloaded attachment", `window.nexusHost.detach('${secondAttachment.attachmentId}')`);
+  console.log("NEXUS reload smoke passed", { sessionId: second.sessionId, pid: second.pid });
+}
+
+function finishSmoke(window: BrowserWindow, code: number): never {
+  if (!window.webContents.isDestroyed()) detachOwner(window.webContents);
+  process.exit(code);
+}
+
+app.whenReady().then(async () => {
   registerHostIpc();
-  createWindow();
+  const window = await createWindow();
+  if (process.env.NEXUS_DESKTOP_SMOKE === "1") {
+    try {
+      await runReloadSmoke(window);
+      finishSmoke(window, 0);
+    } catch (error) {
+      console.error("NEXUS reload smoke failed", error);
+      finishSmoke(window, 1);
+    }
+    return;
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

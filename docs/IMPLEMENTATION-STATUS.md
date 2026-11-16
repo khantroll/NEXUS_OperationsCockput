@@ -36,8 +36,8 @@ runtime behavior is already implemented.
 - Added a narrow preload host bridge for demo-session start/status/attach/detach and bounded
   output events. It is origin- and identifier-validated; the supervisor still runs in the
   Electron main process for this lab and is not claimed durable across main-process failure.
-- Added renderer-load auto-reconnect to the existing demo session; this is a code path,
-  not yet an automated Electron reload demonstration.
+- Added renderer-load auto-reconnect and an Electron smoke harness that reloads the renderer
+  and verifies stable session ID/PID plus replay from the main-process supervisor.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -57,14 +57,13 @@ Validated locally on Windows with Node 24.21.0:
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
-- Panel/host integration demonstration passed without an Electron renderer; renderer reload
-  survival remains explicitly untested.
+- Panel/host integration and Electron reload/reconnect smoke demonstrations passed; the
+  smoke harness preserved session ID/PID and replay across renderer reload.
 
 ## Next unfinished work
 
 1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
-2. Add persistence-free lifecycle failure/recovery tests and test renderer reload/recovery
-   against the existing panel lifecycle reducer and host bridge.
+2. Add SQLite session/layout metadata and supervisor/restart recovery tests.
 3. Add CI before declaring M0 complete.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
