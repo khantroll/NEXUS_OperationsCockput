@@ -1,5 +1,6 @@
 import * as pty from "node-pty";
-import type { SessionRecord } from "@nexus/contracts";
+import type { CliProfileRecord, SessionRecord } from "@nexus/contracts";
+import path from "node:path";
 
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";
@@ -31,6 +32,26 @@ export interface PtyStartOptions {
   cwd?: string;
   cols?: number;
   rows?: number;
+}
+
+export interface ResolvedCliProfile {
+  file: string;
+  args: string[];
+  cwd?: string;
+}
+
+/** Validate and resolve a non-secret profile into a platform-specific executable invocation. */
+export function resolveCliProfile(profile: CliProfileRecord, platform = process.platform, comSpec = process.env.ComSpec ?? "cmd.exe"): ResolvedCliProfile {
+  if (!profile.profileId.trim() || !profile.name.trim()) throw new Error("profile ID and name are required");
+  if (!Number.isInteger(profile.args.length) || profile.args.length > 32) throw new Error("profile has too many arguments");
+  if (profile.args.some((arg) => arg.includes("\u0000") || arg.length > 512)) throw new Error("profile contains an invalid argument");
+  if (profile.cwd !== undefined && (!path.isAbsolute(profile.cwd) || profile.cwd.includes("\u0000"))) {
+    throw new Error("profile cwd must be an absolute path");
+  }
+  const file = profile.executable === "shell"
+    ? comSpec
+    : platform === "win32" ? `${profile.executable}.cmd` : profile.executable;
+  return { file, args: [...profile.args], ...(profile.cwd === undefined ? {} : { cwd: profile.cwd }) };
 }
 
 export interface SessionMetadataSink {
@@ -126,6 +147,14 @@ export class PtySupervisor {
     this.sessions.set(sessionId, managed);
     this.persist(managed, "connected", "running", "none");
     return this.snapshotManaged(managed);
+  }
+
+  public startProfile(profile: CliProfileRecord, options: Omit<PtyStartOptions, "cwd"> = {}): PtySessionSnapshot {
+    const resolved = resolveCliProfile(profile);
+    return this.start(resolved.file, resolved.args, {
+      ...options,
+      ...(resolved.cwd === undefined ? {} : { cwd: resolved.cwd }),
+    });
   }
 
   public attach(sessionId: string, mode: AttachmentMode): PtyAttachment {

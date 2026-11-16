@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SessionRecord } from "../../contracts/src/index.js";
-import { PtySupervisor, type SessionMetadataSink } from "../src/supervisor.js";
+import { PtySupervisor, resolveCliProfile, type SessionMetadataSink } from "../src/supervisor.js";
 
 let conptyCleanupDiagnostics = 0;
 process.on("uncaughtException", (error) => {
@@ -21,6 +21,36 @@ const node = process.execPath;
 const shell = process.env.ComSpec ?? "cmd.exe";
 const tickProgram = "let n=0; setInterval(() => console.log('tick-'+(++n)), 25);";
 const nodeInShell = ["/d", "/c", "node", "-e", tickProgram];
+
+test("CLI profiles resolve only allowlisted launchers and absolute workdirs", () => {
+  assert.deepEqual(resolveCliProfile({ profileId: "claude", name: "Claude Code", executable: "claude", args: ["--version"], cwd: "C:\\work" }, "win32"), {
+    file: "claude.cmd",
+    args: ["--version"],
+    cwd: "C:\\work",
+  });
+  assert.deepEqual(resolveCliProfile({ profileId: "shell", name: "Command shell", executable: "shell", args: ["/d", "/c", "echo", "ok"] }, "win32", "custom-shell.exe"), {
+    file: "custom-shell.exe",
+    args: ["/d", "/c", "echo", "ok"],
+  });
+  assert.throws(() => resolveCliProfile({ profileId: "", name: "bad", executable: "codex", args: [] }), /profile ID/);
+  assert.throws(() => resolveCliProfile({ profileId: "bad", name: "bad", executable: "codex", args: [], cwd: "relative" }), /absolute path/);
+  assert.throws(() => resolveCliProfile({ profileId: "bad", name: "bad", executable: "codex", args: ["bad\u0000arg"] }), /invalid argument/);
+});
+
+test("a shell profile launches through the supervisor boundary", async () => {
+  const supervisor = new PtySupervisor(1024);
+  const session = supervisor.startProfile({
+    profileId: "profile-shell",
+    name: "Profile shell",
+    executable: "shell",
+    args: ["/d", "/c", "echo", "profile-launch"],
+  }, { sessionId: "profile-shell-session" });
+  await supervisor.waitForExit(session.sessionId);
+  const attachment = supervisor.attach(session.sessionId, "read");
+  assert.match(attachment.replay, /profile-launch/);
+  attachment.detach();
+  supervisor.dispose(session.sessionId);
+});
 
 function waitForData(attachment: ReturnType<PtySupervisor["attach"]>, needle: string): Promise<void> {
   return new Promise((resolve, reject) => {

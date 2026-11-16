@@ -15,6 +15,8 @@ Local CLI sessions with filesystem access; remote SSH/RDP/VNC; provider sessions
 - CSRF/WS hijack -> authenticated WS, origin validation, anti-CSRF controls, secure cookies, TLS.
 - Exposed host agent -> bind loopback by default, authenticate peer identity, overlay-only remote ingress, firewall policy.
 - Input injection / privilege abuse -> capability model, allowlisted launcher profiles, exclusive input lease, approvals for destructive commands.
+- Launcher profiles contain only an allowlisted executable kind, bounded arguments, and an
+  absolute working directory; credentials and environment variables are not profile fields.
 - Secret leakage in state/output -> never store cookies/tokens in SQLite; redact sensitive logs; encrypted secrets vault; opt-in output archives with bounded retention.
 - Session theft -> short-lived session tokens, rotation/revocation, strict attachment ACLs, session owner identity.
 - Unsafe file uploads -> sandbox, size restrictions, explicit destination mapping.

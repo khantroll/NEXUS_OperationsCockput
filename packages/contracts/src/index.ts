@@ -38,6 +38,17 @@ export interface WorkspaceRecord {
   lastOpenedAt: string;
 }
 
+export type CliExecutable = "claude" | "codex" | "shell";
+
+/** Non-secret launcher metadata. Environment variables and credentials are intentionally excluded. */
+export interface CliProfileRecord {
+  profileId: string;
+  name: string;
+  executable: CliExecutable;
+  args: readonly string[];
+  cwd?: string;
+}
+
 export interface SessionRecord {
   sessionId: string;
   hostId: string;
