@@ -38,6 +38,8 @@ runtime behavior is already implemented.
   Electron main process for this lab and is not claimed durable across main-process failure.
 - Added renderer-load auto-reconnect and an Electron smoke harness that reloads the renderer
   and verifies stable session ID/PID plus replay from the main-process supervisor.
+- Added `@nexus/storage` SQLite metadata prototype with session/panel schema, reopen recovery,
+  deterministic workspace listing, and no secret/output fields.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -53,7 +55,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (21 passing tests)
+- `npm test` (23 passing tests)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -63,7 +65,7 @@ Validated locally on Windows with Node 24.21.0:
 ## Next unfinished work
 
 1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
-2. Add SQLite session/layout metadata and supervisor/restart recovery tests.
+2. Connect SQLite metadata to supervisor reconciliation and transactional layout commands.
 3. Add CI before declaring M0 complete.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
