@@ -8,6 +8,18 @@ const maxAuthAttemptsPerMinute = 5;
 export interface CompanionHttpOptions {
   host?: "127.0.0.1" | "::1";
   port?: number;
+  readModel?: CompanionReadModel;
+}
+
+export interface CompanionSessionView {
+  sessionId: string;
+  kind: "local-pty" | "ssh-pty" | "browser" | "vnc" | "rdp" | "external-link";
+  process: "starting" | "running" | "exited" | "failed" | "unknown";
+  transport: "connected" | "reconnecting" | "disconnected" | "unavailable";
+}
+
+export interface CompanionReadModel {
+  listSessions(hostId: string): readonly CompanionSessionView[];
 }
 
 export interface CompanionHttpAddress {
@@ -55,6 +67,34 @@ export class CompanionHttpServer {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     if (request.method === "GET" && request.url === "/health") {
       writeJson(response, 200, { ok: true, mode: "loopback" });
+      return;
+    }
+    const sessionPath = request.url?.match(/^\/v1\/companion\/hosts\/([^/]+)\/sessions$/);
+    if (request.method === "GET" && sessionPath) {
+      if (!this.options.readModel || !isLoopback(request.socket.remoteAddress)) {
+        writeJson(response, 403, { error: "session-read-unavailable" });
+        return;
+      }
+      const clientId = request.headers["x-nexus-client-id"];
+      const authorization = request.headers.authorization;
+      const grantId = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+      let hostId: string;
+      try {
+        hostId = decodeURIComponent(sessionPath[1] ?? "");
+      } catch {
+        writeJson(response, 400, { error: "invalid-host-id" });
+        return;
+      }
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(hostId)) {
+        writeJson(response, 400, { error: "invalid-host-id" });
+        return;
+      }
+      if (typeof clientId !== "string" || clientId.length === 0 || clientId.length > 128 || !grantId || grantId.length > 128 ||
+        !this.policy.validateGrant(grantId, hostId, clientId, "read-workspace", new Date().toISOString())) {
+        writeJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      writeJson(response, 200, { sessions: this.options.readModel.listSessions(hostId).flatMap(redactSession) });
       return;
     }
     if (request.method !== "POST" || request.url !== "/v1/companion/authorize") {
@@ -107,6 +147,25 @@ function isLoopback(address: string | undefined): boolean {
   if (address === "::1" || address === "127.0.0.1") return true;
   if (isIP(address) === 6 && address.startsWith("::ffff:127.")) return true;
   return false;
+}
+
+function redactSession(value: CompanionSessionView): CompanionSessionView | [] {
+  if (typeof value !== "object" || value === null ||
+    typeof value.sessionId !== "string" || !isSessionKind(value.kind) ||
+    !isProcessState(value.process) || !isTransportState(value.transport)) return [];
+  return { sessionId: value.sessionId, kind: value.kind, process: value.process, transport: value.transport };
+}
+
+function isSessionKind(value: unknown): value is CompanionSessionView["kind"] {
+  return value === "local-pty" || value === "ssh-pty" || value === "browser" || value === "vnc" || value === "rdp" || value === "external-link";
+}
+
+function isProcessState(value: unknown): value is CompanionSessionView["process"] {
+  return value === "starting" || value === "running" || value === "exited" || value === "failed" || value === "unknown";
+}
+
+function isTransportState(value: unknown): value is CompanionSessionView["transport"] {
+  return value === "connected" || value === "reconnecting" || value === "disconnected" || value === "unavailable";
 }
 
 async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {

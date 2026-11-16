@@ -79,6 +79,8 @@ runtime behavior is already implemented.
 - M2.3 adds a loopback-bound HTTP transport for health and bounded-read authorization with body
   limits, rate limiting, and socket-derived private scope. It is not yet a LAN service or
   authenticated WebSocket.
+- M2.4 adds short-lived grant validation and a read-only session metadata endpoint backed by an
+  injected model; it does not expose terminal output, input, or generic execution.
 
 ## Evidence
 
