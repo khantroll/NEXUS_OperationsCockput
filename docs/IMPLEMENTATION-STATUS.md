@@ -76,6 +76,9 @@ runtime behavior is already implemented.
   durable credential vault, or private-network transport is claimed.
 - M2.2 adds a policy-only private companion authorization boundary with bounded read capabilities;
   it rejects public-network access and invalid credentials and does not expose generic exec.
+- M2.3 adds a loopback-bound HTTP transport for health and bounded-read authorization with body
+  limits, rate limiting, and socket-derived private scope. It is not yet a LAN service or
+  authenticated WebSocket.
 
 ## Evidence
 

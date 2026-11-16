@@ -29,6 +29,11 @@ calendar estimates.
   read capabilities (`read-workspace`, `attach-read`). It rejects public-network requests and
   invalid credentials, and exposes no generic exec or session-write capability. Transport/API
   implementation remains unfinished.
+- M2.3 companion transport: added a loopback-bound HTTP endpoint for health and authenticated
+  bounded-read authorization. It derives private scope from the socket, caps JSON bodies, sends
+  no CORS or credential data, rate-limits authorization attempts, and does not expose session
+  execution. LAN/private-network ingress, TLS/proxy identity, and durable service deployment
+  remain unfinished.
 - Authenticated, private-network-only web client and API; host enrollment and revocation.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.
