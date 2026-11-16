@@ -14,6 +14,8 @@ stored as non-secret SQLite metadata; the renderer still uses one deterministic 
 workspace in this laboratory shell.
 The session shelf also reads persisted non-secret session state so a relaunch-only record is
 visible without implying that its prior process is still alive.
+Terminal input is opt-in: renderer attachments default to read-only, only one write attachment
+is allowed per session, and writes are bounded and owner-checked at the IPC boundary.
 
 Validated:
 
@@ -26,6 +28,7 @@ Validated:
   through SQLite-backed metadata.
 - The session shelf lists persisted session identity and recovery state; it does not expose
   terminal output or provide unauthorised process control.
+- Reload smoke verifies that a read-only attachment cannot submit terminal input.
 - `npm run smoke:restart --workspace @nexus/desktop` verifies two-process reconciliation and
   relaunch with a new PID; it deliberately does not claim process survival across supervisor
   failure.

@@ -5,8 +5,9 @@ type HostDataListener = (payload: { attachmentId: string; data: string }) => voi
 const host = {
   startDemoSession: () => ipcRenderer.invoke("nexus:host:start-demo"),
   status: (sessionId: string) => ipcRenderer.invoke("nexus:host:status", sessionId),
-  attach: (sessionId: string) => ipcRenderer.invoke("nexus:host:attach", sessionId),
+  attach: (sessionId: string, mode: "read" | "write" = "read") => ipcRenderer.invoke("nexus:host:attach", sessionId, mode),
   detach: (attachmentId: string) => ipcRenderer.invoke("nexus:host:detach", attachmentId),
+  write: (attachmentId: string, data: string) => ipcRenderer.invoke("nexus:host:write", attachmentId, data),
   onData: (listener: HostDataListener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: { attachmentId: string; data: string }) => listener(payload);
     ipcRenderer.on("nexus:host:data", wrapped);

@@ -46,6 +46,8 @@ runtime behavior is already implemented.
   recovery states without exposing secrets or terminal output.
 - Added non-secret Claude Code/Codex/shell profile contracts and an allowlisted host-agent
   resolver with absolute-workdir and bounded-argument validation.
+- Added explicit desktop attachment modes and an owner-checked, bounded write bridge; read-only
+  renderer attachments remain the default and only one writer is allowed per session.
 - Added an optional supervisor metadata sink that records local PTY start/exit lifecycle state
   without making the supervisor or SQLite process a claim of crash survival.
 - Wired the desktop host to a per-user SQLite database, reconcile prior supervisor epochs as
@@ -83,6 +85,7 @@ Validated locally on Windows with Node 24.21.0:
 - The session shelf listing and desktop reload smoke pass locally with 30 total tests.
 - The shell profile launch boundary passes a live supervisor test; Claude/Codex executable
   availability is not claimed until those tools are installed in the target host environment.
+- Desktop reload smoke also verifies that read-only input is rejected at the IPC boundary.
 
 ## Remaining limitation
 

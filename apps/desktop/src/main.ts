@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PtySupervisor, type PtyAttachment } from "@nexus/host-agent/supervisor";
+import { PtySupervisor, type AttachmentMode, type PtyAttachment } from "@nexus/host-agent/supervisor";
 import { MetadataStore } from "@nexus/storage/metadata";
 import type { PanelRecord, WorkspaceRecord } from "@nexus/contracts";
 
@@ -13,6 +13,7 @@ let hostSupervisor: PtySupervisor;
 let metadataStore: MetadataStore;
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
+const writerBySession = new Map<string, string>();
 
 function assertRenderer(event: IpcMainInvokeEvent): void {
   if (!event.senderFrame || event.senderFrame.url !== rendererUrl) {
@@ -53,6 +54,7 @@ function detachOwner(owner: WebContents): void {
     if (attachment.owner === owner) {
       attachment.handle.detach();
       attachments.delete(attachmentId);
+      if (writerBySession.get(attachment.sessionId) === attachmentId) writerBySession.delete(attachment.sessionId);
     }
   }
 }
@@ -74,15 +76,19 @@ function registerHostIpc(): void {
     assertSessionId(sessionId);
     return hostSupervisor.snapshot(sessionId);
   });
-  ipcMain.handle("nexus:host:attach", (event, sessionId: unknown) => {
+  ipcMain.handle("nexus:host:attach", (event, sessionId: unknown, requestedMode: unknown = "read") => {
     assertRenderer(event);
     assertSessionId(sessionId);
+    if (requestedMode !== "read" && requestedMode !== "write") throw new Error("invalid attachment mode");
+    const mode = requestedMode as AttachmentMode;
+    if (mode === "write" && writerBySession.has(sessionId)) throw new Error("session already has a writer");
     const attachmentId = crypto.randomUUID();
-    const handle = hostSupervisor.attach(sessionId, "read");
+    const handle = hostSupervisor.attach(sessionId, mode);
     handle.onData((data) => {
       if (!event.sender.isDestroyed()) event.sender.send("nexus:host:data", { attachmentId, data });
     });
     attachments.set(attachmentId, { sessionId, owner: event.sender, handle });
+    if (mode === "write") writerBySession.set(sessionId, attachmentId);
     return { attachmentId, replay: handle.replay };
   });
   ipcMain.handle("nexus:host:detach", (event, attachmentId: unknown) => {
@@ -92,6 +98,15 @@ function registerHostIpc(): void {
     if (!attachment || attachment.owner !== event.sender) throw new Error("unknown attachment");
     attachment.handle.detach();
     attachments.delete(attachmentId);
+    if (writerBySession.get(attachment.sessionId) === attachmentId) writerBySession.delete(attachment.sessionId);
+  });
+  ipcMain.handle("nexus:host:write", (event, attachmentId: unknown, data: unknown) => {
+    assertRenderer(event);
+    if (typeof attachmentId !== "string" || typeof data !== "string") throw new Error("invalid write request");
+    if (data.length > 4096 || data.includes("\u0000")) throw new Error("invalid terminal input");
+    const attachment = attachments.get(attachmentId);
+    if (!attachment || attachment.owner !== event.sender) throw new Error("unknown attachment");
+    attachment.handle.write(data);
   });
   ipcMain.handle("nexus:layout:save", (event, panels: unknown) => {
     assertRenderer(event);
@@ -158,6 +173,8 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
   const first = await evaluate<{ sessionId: string; pid: number }>("initial start", "window.nexusHost.startDemoSession()");
   const firstAttachment = await evaluate<{ attachmentId: string; replay: string }>("initial attach", "window.nexusHost.attach('desktop-demo-session')");
   if (first.sessionId !== demoSessionId || first.pid <= 0) throw new Error("initial host session did not start");
+  const readOnlyWrite = await evaluate<string>("read-only input authorization", `window.nexusHost.write('${firstAttachment.attachmentId}', 'blocked').then(() => 'accepted').catch((error) => error.message)`);
+  if (!readOnlyWrite.includes("read attachment cannot write")) throw new Error(`read-only attachment accepted input: ${readOnlyWrite}`);
   await evaluate<void>("save layout metadata", `window.nexusLayout.save([{
     panelId: 'demo-panel', sessionId: '${demoSessionId}', workspaceId: 'default',
     placement: 'parked', revision: 2,

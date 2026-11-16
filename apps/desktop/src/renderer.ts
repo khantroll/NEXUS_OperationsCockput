@@ -9,8 +9,9 @@ declare global {
     nexusHost: {
       startDemoSession: () => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number }>;
       status: (sessionId: string) => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number }>;
-      attach: (sessionId: string) => Promise<{ attachmentId: string; replay: string }>;
+      attach: (sessionId: string, mode?: "read" | "write") => Promise<{ attachmentId: string; replay: string }>;
       detach: (attachmentId: string) => Promise<void>;
+      write: (attachmentId: string, data: string) => Promise<void>;
       onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null> };
