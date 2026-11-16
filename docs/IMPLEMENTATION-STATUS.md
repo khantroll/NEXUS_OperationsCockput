@@ -71,14 +71,13 @@ Validated locally on Windows with Node 24.21.0:
   stable session ID. This does not claim PTY survival across supervisor failure.
 - GitHub Actions Windows validation passed for commit `327e977`: install, typecheck, 26 tests,
   desktop build/reload/restart smoke, and production audit.
-- The explicit two-panel/two-PTY lifecycle acceptance test now passes locally with 27 total tests.
+- The explicit two-panel/two-PTY lifecycle acceptance test passes locally and in Windows CI with
+  27 total tests.
 
-## Next unfinished work
+## Remaining limitation
 
 1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
    suppression or replacement is validated.
-2. Complete the remaining M0 acceptance checklist, including the full two-session Park →
-   Summon → SnapBack → renderer-reload demonstration with input authorization evidence.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,
