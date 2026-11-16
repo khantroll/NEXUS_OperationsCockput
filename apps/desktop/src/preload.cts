@@ -17,6 +17,10 @@ const layout = {
   save: (panels: unknown[]) => ipcRenderer.invoke("nexus:layout:save", panels),
   load: (panelId: string) => ipcRenderer.invoke("nexus:layout:load", panelId),
 };
+const workspace = {
+  list: () => ipcRenderer.invoke("nexus:workspace:list"),
+  save: (record: unknown) => ipcRenderer.invoke("nexus:workspace:save", record),
+};
 
 contextBridge.exposeInMainWorld("nexusShell", {
   version: "0.1.0-lab",
@@ -24,3 +28,4 @@ contextBridge.exposeInMainWorld("nexusShell", {
 });
 contextBridge.exposeInMainWorld("nexusHost", host);
 contextBridge.exposeInMainWorld("nexusLayout", layout);
+contextBridge.exposeInMainWorld("nexusWorkspace", workspace);

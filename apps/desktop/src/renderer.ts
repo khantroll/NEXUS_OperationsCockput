@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { CommandEnvelope, PanelCommand, PanelRecord } from "../../../packages/contracts/src/index.js";
+import type { CommandEnvelope, PanelCommand, PanelRecord, WorkspaceRecord } from "../../../packages/contracts/src/index.js";
 import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
 
 declare global {
@@ -14,6 +14,7 @@ declare global {
       onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null> };
+    nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void> };
   }
 }
 
@@ -44,6 +45,12 @@ function command(panel: PanelRecord, payload: PanelCommand): CommandEnvelope<Pan
 
 function App(): React.JSX.Element {
   const [panel, setPanel] = useState(initialPanel);
+  const [workspace, setWorkspace] = useState<WorkspaceRecord>({
+    workspaceId: "default",
+    name: "Default",
+    createdAt: "2026-11-15T00:00:00.000Z",
+    lastOpenedAt: "2026-11-15T00:00:00.000Z",
+  });
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
   const [hostOutput, setHostOutput] = useState("");
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
@@ -74,8 +81,21 @@ function App(): React.JSX.Element {
     setAttachmentId(null);
   };
   useEffect(() => {
-    void window.nexusLayout.load("demo-panel")
-      .then((saved) => { if (saved) setPanel(saved); setLayoutLoaded(true); })
+    void Promise.all([
+      window.nexusLayout.load("demo-panel"),
+      window.nexusWorkspace.list(),
+    ])
+      .then(([saved, workspaces]) => {
+        if (saved) setPanel(saved);
+        const current = workspaces.find((candidate) => candidate.workspaceId === "default");
+        if (current) setWorkspace({ ...current, lastOpenedAt: new Date().toISOString() });
+        else {
+          const created = { ...workspace, lastOpenedAt: new Date().toISOString() };
+          setWorkspace(created);
+          void window.nexusWorkspace.save(created);
+        }
+        setLayoutLoaded(true);
+      })
       .catch(() => setLayoutLoaded(true));
   }, []);
   useEffect(() => {
@@ -113,7 +133,7 @@ function App(): React.JSX.Element {
         ),
       ),
       React.createElement("section", { style: styles.canvas },
-        React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / DEFAULT"),
+        React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / "+workspace.name.toUpperCase()),
           React.createElement("article", {
             style: styles.panel,
             "data-panel-id": panel.panelId,

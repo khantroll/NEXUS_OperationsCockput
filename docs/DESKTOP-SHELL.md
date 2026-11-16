@@ -9,6 +9,9 @@ the existing panel lifecycle reducer for local Park, Summon, and SnapBack contro
 The preload also exposes a narrow, read-only demo host bridge for starting or reattaching
 to the main-process supervisor's demo session. It validates the renderer file origin and
 session/attachment identifiers; it does not expose arbitrary command execution.
+Workspace names are loaded and created through the same validated preload boundary and are
+stored as non-secret SQLite metadata; the renderer still uses one deterministic default
+workspace in this laboratory shell.
 
 Validated:
 
@@ -17,6 +20,8 @@ Validated:
 - `npm run smoke:reload --workspace @nexus/desktop`
 - Reload smoke restores the renderer's persisted panel placement and revision, not just the
   main-process host session.
+- Reload smoke continues to restore the panel while the workspace registry is initialized
+  through SQLite-backed metadata.
 - `npm run smoke:restart --workspace @nexus/desktop` verifies two-process reconciliation and
   relaunch with a new PID; it deliberately does not claim process survival across supervisor
   failure.

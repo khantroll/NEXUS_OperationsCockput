@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PtySupervisor, type PtyAttachment } from "@nexus/host-agent/supervisor";
 import { MetadataStore } from "@nexus/storage/metadata";
-import type { PanelRecord } from "@nexus/contracts";
+import type { PanelRecord, WorkspaceRecord } from "@nexus/contracts";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -38,6 +38,14 @@ function isPanelRecord(value: unknown): value is PanelRecord {
     anchor.splitPath.every((part) => typeof part === "string") && Number.isInteger(anchor.tabIndex) &&
     ["center", "left", "right", "top", "bottom"].includes(anchor.fallbackZone ?? "") &&
     Number.isInteger(anchor.layoutRevision);
+}
+
+function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const workspace = value as Partial<WorkspaceRecord>;
+  return typeof workspace.workspaceId === "string" && workspace.workspaceId.length > 0 &&
+    typeof workspace.name === "string" && workspace.name.trim().length > 0 &&
+    typeof workspace.createdAt === "string" && typeof workspace.lastOpenedAt === "string";
 }
 
 function detachOwner(owner: WebContents): void {
@@ -94,6 +102,15 @@ function registerHostIpc(): void {
     assertRenderer(event);
     if (typeof panelId !== "string" || panelId.length === 0) throw new Error("invalid panel ID");
     return metadataStore.loadPanel(panelId);
+  });
+  ipcMain.handle("nexus:workspace:list", (event) => {
+    assertRenderer(event);
+    return metadataStore.listWorkspaces();
+  });
+  ipcMain.handle("nexus:workspace:save", (event, workspace: unknown) => {
+    assertRenderer(event);
+    if (!isWorkspaceRecord(workspace)) throw new Error("invalid workspace metadata");
+    metadataStore.saveWorkspace(workspace);
   });
 }
 
