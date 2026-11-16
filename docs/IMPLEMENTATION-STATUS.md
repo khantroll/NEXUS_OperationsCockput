@@ -64,13 +64,14 @@ Validated locally on Windows with Node 24.21.0:
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
 - Panel/host integration and Electron reload/reconnect smoke demonstrations passed; the
-  smoke harness preserved session ID/PID and replay across renderer reload.
+  smoke harness preserved session ID/PID, replay, and a parked panel's placement/revision
+  across renderer reload.
 
 ## Next unfinished work
 
 1. Resolve or isolate the node-pty ConPTY cleanup diagnostic.
-2. Connect transactional layout persistence to the renderer command path and add full desktop
-   restart/recovery demonstrations.
+2. Add full desktop restart/recovery demonstrations; supervisor failure still requires relaunch
+   rather than claiming process survival.
 3. Run the new Windows CI workflow and complete the remaining M0 acceptance checklist.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
