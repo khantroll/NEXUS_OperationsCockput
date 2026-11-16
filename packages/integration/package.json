@@ -8,6 +8,7 @@
     "@nexus/host-agent": "0.1.0"
   },
   "exports": {
-    "./provider": "./src/provider.ts"
+    "./provider": "./src/provider.ts",
+    "./host-enrollment": "./src/host-enrollment.ts"
   }
 }

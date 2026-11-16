@@ -1,6 +1,6 @@
 # Implementation Status
 
-Status: M0 and M1 acceptance complete; M2 not started | 2026-11-16
+Status: M0 and M1 acceptance complete; M2 implementation in progress | 2026-11-16
 
 The current architectural decisions are recorded in `docs/DECISIONS.md` (ADR-008 through
 ADR-012). They are accepted constraints for this milestone, not evidence that the related
@@ -71,13 +71,16 @@ runtime behavior is already implemented.
   spawn or terminate a backend session.
 - Added Node test coverage for state transitions, revision rejection, idempotency, and
   invalid command handling.
+- M2.0/M2.1 started with a non-secret provider capability registry and an in-memory host
+  enrollment/revocation policy primitive. These are policy boundaries only; no remote API,
+  durable credential vault, or private-network transport is claimed.
 
 ## Evidence
 
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (36 passing tests; serialized to avoid concurrent ConPTY cleanup races)
+- `npm test` (40 passing tests; serialized to avoid concurrent ConPTY cleanup races)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.

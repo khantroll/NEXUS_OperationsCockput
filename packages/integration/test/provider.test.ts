@@ -12,6 +12,7 @@ test("provider registry is deterministic and stores capability metadata only", (
   });
   assert.equal("credentials" in (registry.get("ssh") ?? {}), false);
   assert.equal("target" in (registry.get("ssh") ?? {}), false);
+  assert.throws(() => (registry.get("ssh")!.capabilities as string[]).push("chat"), TypeError);
 });
 
 test("provider identity and duplicate registration fail closed", () => {

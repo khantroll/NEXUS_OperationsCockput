@@ -22,6 +22,9 @@ calendar estimates.
 - M2.0 capability boundary: added a deterministic provider registry for ChatGPT, Claude, Gemini,
   Codex, SSH, VNC, and RDP launch modes. It stores only non-secret capability metadata; no
   credentials or connection targets are accepted. This is not remote access or authentication.
+- M2.1 enrollment policy: added an in-memory host enrollment/revocation primitive that generates
+  high-entropy tokens and stores only salted scrypt hashes plus public host metadata. This is not
+  yet a network API, durable vault, or private-network transport.
 - Authenticated, private-network-only web client and API; host enrollment and revocation.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.
