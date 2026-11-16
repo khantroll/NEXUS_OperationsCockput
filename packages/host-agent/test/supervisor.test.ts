@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PtySupervisor } from "../src/supervisor.js";
+import type { SessionRecord } from "../../contracts/src/index.js";
+import { PtySupervisor, type SessionMetadataSink } from "../src/supervisor.js";
 
 const node = process.execPath;
 const shell = process.env.ComSpec ?? "cmd.exe";
@@ -84,5 +85,26 @@ test("disposal requires every attachment to detach", async () => {
   const attachment = supervisor.attach(session.sessionId, "read");
   assert.throws(() => supervisor.dispose(session.sessionId), /attached session/);
   attachment.detach();
+  supervisor.dispose(session.sessionId);
+});
+
+test("optional metadata sink tracks PTY lifecycle without owning the process", async () => {
+  const records: SessionRecord[] = [];
+  const metadata: SessionMetadataSink = { saveSession: (record) => records.push(record) };
+  const supervisor = new PtySupervisor({
+    metadata,
+    hostId: "test-host",
+    hostBootEpoch: "test-boot",
+  });
+  const session = supervisor.start(shell, ["/d", "/c", "echo", "metadata-test"], {
+    sessionId: "pty-metadata",
+  });
+  await supervisor.waitForExit(session.sessionId);
+  assert.equal(records[0]?.transport, "connected");
+  assert.equal(records.at(-1)?.transport, "disconnected");
+  assert.equal(records.at(-1)?.process, "exited");
+  assert.equal(records.at(-1)?.recovery, "none");
+  assert.equal(records.at(-1)?.hostBootEpoch, "test-boot");
+  assert.equal(records.at(-1)?.createdAt, records[0]?.createdAt);
   supervisor.dispose(session.sessionId);
 });

@@ -1,4 +1,5 @@
 import * as pty from "node-pty";
+import type { SessionRecord } from "../../contracts/src/index.js";
 
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";
@@ -32,9 +33,21 @@ export interface PtyStartOptions {
   rows?: number;
 }
 
+export interface SessionMetadataSink {
+  saveSession(session: SessionRecord): void;
+}
+
+export interface PtySupervisorOptions {
+  maxOutputBytes?: number;
+  metadata?: SessionMetadataSink;
+  hostId?: string;
+  hostBootEpoch?: string;
+}
+
 interface ManagedSession {
   readonly id: string;
   readonly pty: pty.IPty;
+  readonly createdAt: string;
   readonly chunks: string[];
   readonly maxOutputBytes: number;
   outputBytes: number;
@@ -56,10 +69,19 @@ interface ManagedSession {
 export class PtySupervisor {
   private readonly sessions = new Map<string, ManagedSession>();
   private readonly maxOutputBytes: number;
+  private readonly metadata: SessionMetadataSink | undefined;
+  private readonly hostId: string;
+  private readonly hostBootEpoch: string;
 
-  public constructor(maxOutputBytes = 64 * 1024) {
-    this.maxOutputBytes = maxOutputBytes;
-    if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 1) {
+  public constructor(maxOutputBytesOrOptions: number | PtySupervisorOptions = 64 * 1024, metadata?: SessionMetadataSink) {
+    const options: PtySupervisorOptions = typeof maxOutputBytesOrOptions === "number"
+      ? { maxOutputBytes: maxOutputBytesOrOptions, ...(metadata === undefined ? {} : { metadata }) }
+      : maxOutputBytesOrOptions;
+    this.maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
+    this.metadata = options.metadata;
+    this.hostId = options.hostId ?? "windows-xenos";
+    this.hostBootEpoch = options.hostBootEpoch ?? `supervisor-${process.pid}`;
+    if (!Number.isInteger(this.maxOutputBytes) || this.maxOutputBytes < 1) {
       throw new RangeError("maxOutputBytes must be a positive integer");
     }
   }
@@ -77,6 +99,7 @@ export class PtySupervisor {
     const managed: ManagedSession = {
       id: sessionId,
       pty: child,
+      createdAt: new Date().toISOString(),
       chunks: [],
       maxOutputBytes: this.maxOutputBytes,
       outputBytes: 0,
@@ -98,8 +121,10 @@ export class PtySupervisor {
       if (managed.terminationTimer) clearTimeout(managed.terminationTimer);
       managed.status = "exited";
       managed.exitCode = exitCode;
+      this.persist(managed, "disconnected", "exited", "none");
     });
     this.sessions.set(sessionId, managed);
+    this.persist(managed, "connected", "running", "none");
     return this.snapshotManaged(managed);
   }
 
@@ -196,5 +221,32 @@ export class PtySupervisor {
       ...(managed.exitCode === undefined ? {} : { exitCode: managed.exitCode }),
       outputBytes: managed.outputBytes,
     };
+  }
+
+  private persist(
+    managed: ManagedSession,
+    transport: SessionRecord["transport"],
+    processState: SessionRecord["process"],
+    recovery: SessionRecord["recovery"],
+  ): void {
+    if (this.metadata === undefined) return;
+    const observedAt = new Date().toISOString();
+    try {
+      this.metadata.saveSession({
+        sessionId: managed.id,
+        hostId: this.hostId,
+        hostBootEpoch: this.hostBootEpoch,
+        kind: "local-pty",
+        transport,
+        process: processState,
+        recovery,
+        createdAt: managed.createdAt,
+        lastObservedAt: observedAt,
+        pid: managed.pty.pid,
+        ...(managed.exitCode === undefined ? {} : { exitCode: managed.exitCode }),
+      });
+    } catch {
+      // Metadata is optional; a sink failure must not orphan or terminate the PTY.
+    }
   }
 }

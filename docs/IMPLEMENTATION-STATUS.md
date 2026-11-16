@@ -40,6 +40,8 @@ runtime behavior is already implemented.
   and verifies stable session ID/PID plus replay from the main-process supervisor.
 - Added `@nexus/storage` SQLite metadata prototype with session/panel schema, reopen recovery,
   deterministic workspace listing, and no secret/output fields.
+- Added an optional supervisor metadata sink that records local PTY start/exit lifecycle state
+  without making the supervisor or SQLite process a claim of crash survival.
 - The processor fails closed without an explicit authorization policy. Request replay is
   process-local with a configurable bounded retention; durable storage and restart recovery
   still belong to the persistence milestone.
@@ -55,7 +57,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (23 passing tests)
+- `npm test` (24 passing tests)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -65,7 +67,8 @@ Validated locally on Windows with Node 24.21.0:
 ## Next unfinished work
 
 1. Resolve or isolate the node-pty ConPTY cleanup diagnostic and add supervisor/restart tests.
-2. Connect SQLite metadata to supervisor reconciliation and transactional layout commands.
+2. Wire `MetadataStore` into the desktop host supervisor and add reconciliation/restart tests;
+   transactional layout commands remain separate.
 3. Add CI before declaring M0 complete.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
