@@ -16,6 +16,8 @@ test("host enrollment authenticates and revocation fails closed", () => {
 
 test("enrollment generates tokens and rejects duplicate hosts", () => {
   const registry = new HostEnrollmentRegistry();
-  registry.enroll("host", "Host", "now");
-  assert.throws(() => registry.enroll("host", "Host", "now"), /already enrolled/);
+  registry.enroll("host", "Host", "2026-11-16T00:00:00.000Z");
+  assert.throws(() => registry.enroll("host", "Host", "2026-11-16T00:00:00.000Z"), /already enrolled/);
+  assert.throws(() => registry.enroll("bad host", "Host", "2026-11-16T00:00:00.000Z"), /identity/);
+  assert.throws(() => registry.enroll("host-two", "Host", "not-a-time"), /timestamp/);
 });

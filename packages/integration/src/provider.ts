@@ -16,6 +16,9 @@ export class ProviderRegistry {
 
   public register(provider: ProviderDescriptor): void {
     if (!provider.providerId.trim() || !provider.displayName.trim()) throw new Error("provider identity is required");
+    if (!isProviderKind(provider.kind) || !isLaunchMode(provider.launchMode) || !provider.capabilities.every(isCapability)) {
+      throw new Error("provider descriptor is invalid");
+    }
     if (provider.capabilities.length === 0) throw new Error("provider must declare a capability");
     if (this.providers.has(provider.providerId)) throw new Error(`provider already registered: ${provider.providerId}`);
     this.providers.set(provider.providerId, Object.freeze({ ...provider, capabilities: Object.freeze([...provider.capabilities]) }));
@@ -28,4 +31,16 @@ export class ProviderRegistry {
   public list(): readonly ProviderDescriptor[] {
     return Object.freeze([...this.providers.values()].sort((left, right) => left.displayName.localeCompare(right.displayName) || left.providerId.localeCompare(right.providerId)));
   }
+}
+
+function isProviderKind(value: unknown): value is ProviderKind {
+  return value === "chatgpt" || value === "claude" || value === "gemini" || value === "codex" || value === "ssh" || value === "vnc" || value === "rdp";
+}
+
+function isLaunchMode(value: unknown): value is ProviderLaunchMode {
+  return value === "api" || value === "browser" || value === "external" || value === "native";
+}
+
+function isCapability(value: unknown): value is ProviderCapability {
+  return value === "chat" || value === "terminal" || value === "desktop" || value === "remote";
 }

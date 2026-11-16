@@ -20,4 +20,5 @@ test("provider identity and duplicate registration fail closed", () => {
   assert.throws(() => registry.register({ providerId: "", kind: "chatgpt", displayName: "ChatGPT", launchMode: "browser", capabilities: ["chat"] }), /identity/);
   registry.register({ providerId: "chatgpt-web", kind: "chatgpt", displayName: "ChatGPT", launchMode: "browser", capabilities: ["chat"] });
   assert.throws(() => registry.register({ providerId: "chatgpt-web", kind: "chatgpt", displayName: "ChatGPT", launchMode: "external", capabilities: ["chat"] }), /already registered/);
+  assert.throws(() => registry.register({ providerId: "bad", kind: "exec" as never, displayName: "Bad", launchMode: "native", capabilities: ["terminal"] }), /descriptor/);
 });

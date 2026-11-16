@@ -25,6 +25,10 @@ calendar estimates.
 - M2.1 enrollment policy: added an in-memory host enrollment/revocation primitive that generates
   high-entropy tokens and stores only salted scrypt hashes plus public host metadata. This is not
   yet a network API, durable vault, or private-network transport.
+- M2.2 companion policy: added a policy-only private-network authorization boundary with bounded
+  read capabilities (`read-workspace`, `attach-read`). It rejects public-network requests and
+  invalid credentials, and exposes no generic exec or session-write capability. Transport/API
+  implementation remains unfinished.
 - Authenticated, private-network-only web client and API; host enrollment and revocation.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.

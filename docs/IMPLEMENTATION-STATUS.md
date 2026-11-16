@@ -74,6 +74,8 @@ runtime behavior is already implemented.
 - M2.0/M2.1 started with a non-secret provider capability registry and an in-memory host
   enrollment/revocation policy primitive. These are policy boundaries only; no remote API,
   durable credential vault, or private-network transport is claimed.
+- M2.2 adds a policy-only private companion authorization boundary with bounded read capabilities;
+  it rejects public-network access and invalid credentials and does not expose generic exec.
 
 ## Evidence
 

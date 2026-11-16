@@ -23,12 +23,15 @@ export class HostEnrollmentRegistry {
   private readonly hosts = new Map<string, StoredHost>();
 
   public enroll(hostId: string, displayName: string, now: string): EnrollmentResult {
-    if (!hostId.trim() || !displayName.trim()) throw new Error("host identity is required");
-    if (this.hosts.has(hostId)) throw new Error(`host already enrolled: ${hostId}`);
+    const normalizedHostId = hostId.trim();
+    const normalizedDisplayName = displayName.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(normalizedHostId) || !normalizedDisplayName) throw new Error("host identity is invalid");
+    if (!Number.isFinite(Date.parse(now))) throw new Error("enrollment timestamp is invalid");
+    if (this.hosts.has(normalizedHostId)) throw new Error(`host already enrolled: ${normalizedHostId}`);
     const enrollmentToken = randomBytes(32).toString("base64url");
     const tokenSalt = randomBytes(16);
-    const host: StoredHost = { hostId, displayName, createdAt: now, tokenSalt, tokenHash: hashToken(enrollmentToken, tokenSalt) };
-    this.hosts.set(hostId, host);
+    const host: StoredHost = { hostId: normalizedHostId, displayName: normalizedDisplayName, createdAt: now, tokenSalt, tokenHash: hashToken(enrollmentToken, tokenSalt) };
+    this.hosts.set(normalizedHostId, host);
     return { host: publicHost(host), enrollmentToken };
   }
 
