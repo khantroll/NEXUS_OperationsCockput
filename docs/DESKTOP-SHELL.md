@@ -17,6 +17,9 @@ Validated:
 - `npm run smoke:reload --workspace @nexus/desktop`
 - Reload smoke restores the renderer's persisted panel placement and revision, not just the
   main-process host session.
+- `npm run smoke:restart --workspace @nexus/desktop` verifies two-process reconciliation and
+  relaunch with a new PID; it deliberately does not claim process survival across supervisor
+  failure.
 - Electron binary `v45.3.2`
 - `npm audit --omit=dev`: 0 vulnerabilities
 

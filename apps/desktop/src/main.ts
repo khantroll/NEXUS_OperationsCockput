@@ -173,6 +173,33 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
   console.log("NEXUS reload smoke passed", { sessionId: second.sessionId, pid: second.pid });
 }
 
+async function runRecoverySmoke(mode: "seed" | "relaunch"): Promise<void> {
+  if (mode === "seed") {
+    const shell = process.env.ComSpec ?? "cmd.exe";
+    const session = hostSupervisor.start(shell, ["/d", "/c", "node", "-e", "setInterval(() => {}, 1000); setTimeout(() => process.exit(0), 15000)"], {
+      sessionId: demoSessionId,
+    });
+    console.log("NEXUS recovery seed passed", { sessionId: session.sessionId, pid: session.pid });
+    return;
+  }
+  const prior = metadataStore.loadSession(demoSessionId);
+  if (!prior || prior.process !== "unknown" || prior.recovery !== "relaunch-only") {
+    throw new Error(`prior supervisor state was not reconciled: ${JSON.stringify(prior)}`);
+  }
+  const shell = process.env.ComSpec ?? "cmd.exe";
+  const relaunched = hostSupervisor.start(shell, ["/d", "/c", "node", "-e", "setTimeout(() => process.exit(0), 250)"], {
+    sessionId: demoSessionId,
+  });
+  if (relaunched.pid === prior.pid) throw new Error("relaunch reused the prior PTY PID unexpectedly");
+  await hostSupervisor.waitForExit(relaunched.sessionId);
+  hostSupervisor.dispose(relaunched.sessionId);
+  console.log("NEXUS recovery relaunch passed", {
+    sessionId: relaunched.sessionId,
+    priorPid: prior.pid,
+    relaunchedPid: relaunched.pid,
+  });
+}
+
 function finishSmoke(window: BrowserWindow, code: number): never {
   if (!window.webContents.isDestroyed()) detachOwner(window.webContents);
   process.exit(code);
@@ -189,6 +216,22 @@ app.whenReady().then(async () => {
     hostBootEpoch,
   });
   registerHostIpc();
+  const recoveryMode = process.env.NEXUS_DESKTOP_RECOVERY_SEED === "1"
+    ? "seed"
+    : process.env.NEXUS_DESKTOP_RECOVERY_RELAUNCH === "1" ? "relaunch" : null;
+  if (recoveryMode !== null) {
+    try {
+      await runRecoverySmoke(recoveryMode);
+      metadataStore.close();
+      app.exit(0);
+      return;
+    } catch (error) {
+      console.error("NEXUS recovery smoke failed", error);
+      metadataStore.close();
+      app.exit(1);
+      return;
+    }
+  }
   const window = await createWindow();
   if (process.env.NEXUS_DESKTOP_SMOKE === "1") {
     try {

@@ -35,9 +35,11 @@ The focused host-agent tests are in
   from its process-list helper during explicit termination on this Windows environment,
   although the awaitable termination result reaches `exited` and tests return success.
   This is recorded as a cleanup limitation, not hidden as a clean result.
-- Renderer reload survival has not been demonstrated because Electron is not implemented.
+- Renderer reload survival is demonstrated by the desktop smoke; supervisor-process crash,
+  machine restart, and host-agent recovery remain separate claims.
 - Supervisor-process crash, machine restart, and host-agent recovery have not been tested
   and must not be claimed.
-- SQLite metadata, durable restart recovery, renderer lifecycle integration, and production
-  attachment authorization remain unfinished. The separate M0 integration test covers only
-  reducer/host co-execution.
+- SQLite metadata and renderer lifecycle integration are implemented as M0 lab boundaries;
+  durable PTY restart recovery and production attachment authorization remain unfinished.
+- The cleanup diagnostic is isolated to node-pty's ConPTY process-list helper; explicit native
+  cleanup is retained because omitting it leaks handles and hangs the test process.

@@ -66,13 +66,15 @@ Validated locally on Windows with Node 24.21.0:
 - Panel/host integration and Electron reload/reconnect smoke demonstrations passed; the
   smoke harness preserved session ID/PID, replay, and a parked panel's placement/revision
   across renderer reload.
+- Desktop restart/recovery smoke passed in two Electron processes: the second process
+  reconciled the prior PTY as `unknown`/`relaunch-only` and launched a new PID under the same
+  stable session ID. This does not claim PTY survival across supervisor failure.
 
 ## Next unfinished work
 
-1. Resolve or isolate the node-pty ConPTY cleanup diagnostic.
-2. Add full desktop restart/recovery demonstrations; supervisor failure still requires relaunch
-   rather than claiming process survival.
-3. Run the new Windows CI workflow and complete the remaining M0 acceptance checklist.
+1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
+   suppression or replacement is validated.
+2. Run the new Windows CI workflow and complete the remaining M0 acceptance checklist.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,

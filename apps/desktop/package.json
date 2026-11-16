@@ -8,7 +8,8 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "build": "npm run typecheck && tsc -p tsconfig.main.json && vite build",
     "start": "electron dist/main/main.js",
-    "smoke:reload": "npm run build && node scripts/run-smoke.mjs"
+    "smoke:reload": "npm run build && node scripts/run-smoke.mjs",
+    "smoke:restart": "npm run build && node scripts/run-restart-smoke.mjs"
   },
   "dependencies": {
     "@nexus/contracts": "0.1.0",
