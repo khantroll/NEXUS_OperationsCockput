@@ -42,6 +42,8 @@ runtime behavior is already implemented.
   deterministic workspace listing, and no secret/output fields.
 - Added the persistent workspace registry with deterministic name/ID ordering, explicit empty-only
   deletion, and a tested v1-to-v2 migration that preserves session and panel metadata.
+- Added a read-only session shelf bridge that lists persisted session process, transport, and
+  recovery states without exposing secrets or terminal output.
 - Added an optional supervisor metadata sink that records local PTY start/exit lifecycle state
   without making the supervisor or SQLite process a claim of crash survival.
 - Wired the desktop host to a per-user SQLite database, reconcile prior supervisor epochs as
@@ -61,7 +63,7 @@ runtime behavior is already implemented.
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (29 passing tests; serialized to avoid concurrent ConPTY cleanup races)
+- `npm test` (30 passing tests; serialized to avoid concurrent ConPTY cleanup races)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -76,6 +78,7 @@ Validated locally on Windows with Node 24.21.0:
 - The explicit two-panel/two-PTY lifecycle acceptance test passes locally and in Windows CI with
   27 total tests.
 - The workspace registry and v1-to-v2 metadata migration tests pass locally with 29 total tests.
+- The session shelf listing and desktop reload smoke pass locally with 30 total tests.
 
 ## Remaining limitation
 

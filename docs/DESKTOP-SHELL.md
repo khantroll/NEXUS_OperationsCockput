@@ -12,6 +12,8 @@ session/attachment identifiers; it does not expose arbitrary command execution.
 Workspace names are loaded and created through the same validated preload boundary and are
 stored as non-secret SQLite metadata; the renderer still uses one deterministic default
 workspace in this laboratory shell.
+The session shelf also reads persisted non-secret session state so a relaunch-only record is
+visible without implying that its prior process is still alive.
 
 Validated:
 
@@ -22,6 +24,8 @@ Validated:
   main-process host session.
 - Reload smoke continues to restore the panel while the workspace registry is initialized
   through SQLite-backed metadata.
+- The session shelf lists persisted session identity and recovery state; it does not expose
+  terminal output or provide unauthorised process control.
 - `npm run smoke:restart --workspace @nexus/desktop` verifies two-process reconciliation and
   relaunch with a new PID; it deliberately does not claim process survival across supervisor
   failure.

@@ -112,6 +112,10 @@ function registerHostIpc(): void {
     if (!isWorkspaceRecord(workspace)) throw new Error("invalid workspace metadata");
     metadataStore.saveWorkspace(workspace);
   });
+  ipcMain.handle("nexus:session:list", (event) => {
+    assertRenderer(event);
+    return metadataStore.listSessions();
+  });
 }
 
 async function createWindow(): Promise<BrowserWindow> {

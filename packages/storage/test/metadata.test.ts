@@ -71,6 +71,17 @@ test("session and panel metadata survive store reopen", () => {
   }
 });
 
+test("session shelf listing is deterministic and includes recovery state", () => {
+  const store = new MetadataStore(":memory:");
+  store.saveSession(session);
+  store.saveSession({ ...session, sessionId: "session-storage-0", process: "unknown", recovery: "relaunch-only" });
+  assert.deepEqual(store.listSessions().map(({ sessionId, process, recovery }) => ({ sessionId, process, recovery })), [
+    { sessionId: "session-storage-0", process: "unknown", recovery: "relaunch-only" },
+    { sessionId: session.sessionId, process: "running", recovery: "reconnectable" },
+  ]);
+  store.close();
+});
+
 test("metadata rejects panels that reference unknown sessions", () => {
   const store = new MetadataStore(":memory:");
   assert.throws(() => store.savePanel(panel), /FOREIGN KEY constraint failed/);

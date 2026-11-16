@@ -15,6 +15,7 @@ declare global {
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null> };
     nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void> };
+    nexusSessions: { list: () => Promise<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>> };
   }
 }
 
@@ -51,6 +52,7 @@ function App(): React.JSX.Element {
     createdAt: "2026-11-15T00:00:00.000Z",
     lastOpenedAt: "2026-11-15T00:00:00.000Z",
   });
+  const [sessions, setSessions] = useState<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>>([]);
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
   const [hostOutput, setHostOutput] = useState("");
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
@@ -70,6 +72,9 @@ function App(): React.JSX.Element {
     const session = await window.nexusHost.startDemoSession();
     const attached = await window.nexusHost.attach(session.sessionId);
     setHostSession(session);
+    setSessions((current) => current.some((candidate) => candidate.sessionId === session.sessionId)
+      ? current.map((candidate) => candidate.sessionId === session.sessionId ? { ...candidate, process: session.status, pid: session.pid } : candidate)
+      : [...current, { sessionId: session.sessionId, kind: "local-pty", transport: "connected", process: session.status, recovery: "none", pid: session.pid }]);
     const nextPanel = { ...panel, sessionId: session.sessionId };
     setPanel(nextPanel);
     persistPanel(nextPanel);
@@ -84,9 +89,11 @@ function App(): React.JSX.Element {
     void Promise.all([
       window.nexusLayout.load("demo-panel"),
       window.nexusWorkspace.list(),
+      window.nexusSessions.list(),
     ])
-      .then(([saved, workspaces]) => {
+      .then(([saved, workspaces, persistedSessions]) => {
         if (saved) setPanel(saved);
+        setSessions(persistedSessions);
         const current = workspaces.find((candidate) => candidate.workspaceId === "default");
         if (current) setWorkspace({ ...current, lastOpenedAt: new Date().toISOString() });
         else {
@@ -126,11 +133,14 @@ function App(): React.JSX.Element {
       { style: styles.workspace },
       React.createElement("aside", { style: styles.shelf },
         React.createElement("div", { style: styles.sectionLabel }, "SESSION SHELF"),
-        React.createElement("div", { style: styles.sessionCard },
-          React.createElement("strong", null, "Presentation demo"),
-          React.createElement("span", { style: styles.muted }, "session · "+panel.sessionId),
-          React.createElement("span", { style: styles.running }, hostSession ? "● "+hostSession.status+" · pid "+hostSession.pid : "● host bridge idle"),
-        ),
+        sessions.length === 0
+          ? React.createElement("div", { style: styles.muted }, "No persisted sessions")
+          : sessions.map((session) => React.createElement("div", { style: styles.sessionCard, key: session.sessionId },
+            React.createElement("strong", null, session.kind),
+            React.createElement("span", { style: styles.muted }, "session · "+session.sessionId),
+            React.createElement("span", { style: session.process === "running" ? styles.running : styles.muted },
+              "● "+session.process+" · "+session.recovery+(session.pid ? " · pid "+session.pid : "")),
+          )),
       ),
       React.createElement("section", { style: styles.canvas },
         React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / "+workspace.name.toUpperCase()),
