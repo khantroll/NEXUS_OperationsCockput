@@ -268,7 +268,7 @@ export class PtySupervisor {
     managed.disposed = true;
     // node-pty does not expose a separate close method; kill releases the
     // native ConPTY handle even when the child already exited. Its helper may
-    // emit a documented AttachConsole diagnostic during this cleanup path.
+    // emit the documented AttachConsole diagnostic during this cleanup path.
     try {
       managed.pty.kill();
     } catch {
@@ -286,6 +286,7 @@ export class PtySupervisor {
       outputBytes: managed.outputBytes,
     };
   }
+
 
   private persist(
     managed: ManagedSession,

@@ -1,6 +1,6 @@
 # Windows ConPTY Spike
 
-Status: limited evidence | 2026-11-15
+Status: limited evidence | 2026-11-16
 
 ## Scope
 
@@ -31,10 +31,10 @@ The focused host-agent tests are in
 
 ## Limitations and unproven claims
 
-- The current `node-pty` ConPTY cleanup path emits `AttachConsole failed` diagnostics
-  from its process-list helper during explicit termination on this Windows environment,
-  although the awaitable termination result reaches `exited` and tests return success.
-  This is recorded as a cleanup limitation, not hidden as a clean result.
+- A minimal direct probe reproduced `AttachConsole failed` both when `node-pty` `kill()` was
+  called after `onExit` and when it was used for forced termination while running. Omitting
+  the kill avoided the diagnostic but did not produce a reliable PTY exit event, so that path
+  was rejected as unsafe for cleanup.
 - Renderer reload survival is demonstrated by the desktop smoke; supervisor-process crash,
   machine restart, and host-agent recovery remain separate claims.
 - Supervisor-process crash, machine restart, and host-agent recovery have not been tested
@@ -42,4 +42,4 @@ The focused host-agent tests are in
 - SQLite metadata and renderer lifecycle integration are implemented as M0 lab boundaries;
   durable PTY restart recovery and production attachment authorization remain unfinished.
 - The cleanup diagnostic is isolated to node-pty's ConPTY process-list helper; explicit native
-  cleanup is retained because omitting it leaks handles and hangs the test process.
+  cleanup is retained because alternatives tested here did not reliably signal PTY exit.

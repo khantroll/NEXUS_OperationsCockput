@@ -6,5 +6,8 @@
   "dependencies": {
     "@nexus/core": "0.1.0",
     "@nexus/host-agent": "0.1.0"
+  },
+  "exports": {
+    "./provider": "./src/provider.ts"
   }
 }
