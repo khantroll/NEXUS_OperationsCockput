@@ -71,6 +71,7 @@ Validated locally on Windows with Node 24.21.0:
   stable session ID. This does not claim PTY survival across supervisor failure.
 - GitHub Actions Windows validation passed for commit `327e977`: install, typecheck, 26 tests,
   desktop build/reload/restart smoke, and production audit.
+- The explicit two-panel/two-PTY lifecycle acceptance test now passes locally with 27 total tests.
 
 ## Next unfinished work
 

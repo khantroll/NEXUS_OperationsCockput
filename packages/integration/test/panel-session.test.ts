@@ -84,3 +84,60 @@ test("Park -> Summon -> SnapBack preserves the live host session", async () => {
     supervisor.dispose(started.sessionId);
   }
 });
+
+test("two independent panels survive lifecycle transitions and renderer-style reattach", async () => {
+  const supervisor = new PtySupervisor(4096);
+  const first = supervisor.start(shell, nodeProgram, { sessionId: "integration-session-a" });
+  const second = supervisor.start(shell, nodeProgram, { sessionId: "integration-session-b" });
+  const processor = new PanelCommandProcessor(() => true);
+  const panelFor = (panelId: string, sessionId: string): PanelRecord => ({
+    panelId,
+    sessionId,
+    workspaceId: "workspace-1",
+    placement: "docked",
+    homeAnchor: {
+      workspaceId: "workspace-1",
+      groupId: "terminals",
+      splitPath: ["root", panelId],
+      tabIndex: 0,
+      fallbackZone: "center",
+      layoutRevision: 1,
+    },
+    revision: 1,
+  });
+  const firstAttachment = supervisor.attach(first.sessionId, "write");
+  const secondAttachment = supervisor.attach(second.sessionId, "write");
+  try {
+    await Promise.all([
+      waitForData(firstAttachment, "panel-tick-2"),
+      waitForData(secondAttachment, "panel-tick-2"),
+    ]);
+    const panels = [panelFor("panel-a", first.sessionId), panelFor("panel-b", second.sessionId)];
+    const pids = panels.map((panel) => supervisor.snapshot(panel.sessionId).pid);
+    for (const [index, initial] of panels.entries()) {
+      let panel = processor.process(initial, envelope(`${initial.panelId}-park`, initial.revision, { op: "park", panelId: initial.panelId })).record;
+      panel = processor.process(panel, envelope(`${initial.panelId}-summon`, panel.revision, { op: "summon", panelId: panel.panelId, targetSurface: "main" })).record;
+      panel = processor.process(panel, envelope(`${initial.panelId}-snapback`, panel.revision, { op: "snapBack", panelId: panel.panelId })).record;
+      assert.equal(panel.placement, "docked");
+      assert.equal(panel.sessionId, initial.sessionId);
+      assert.equal(supervisor.snapshot(panel.sessionId).pid, pids[index]);
+    }
+    firstAttachment.detach();
+    secondAttachment.detach();
+    const reattached = [supervisor.attach(first.sessionId, "read"), supervisor.attach(second.sessionId, "read")];
+    for (const [index, attachment] of reattached.entries()) {
+      const current = panels[index];
+      assert.ok(current);
+      assert.match(attachment.replay, /panel-tick-2/);
+      assert.throws(() => attachment.write("blocked"), /read attachment cannot write/);
+      assert.equal(supervisor.snapshot(current.sessionId).pid, pids[index]);
+      attachment.detach();
+    }
+  } finally {
+    for (const session of [first, second]) {
+      const termination = await supervisor.terminate(session.sessionId);
+      assert.equal(termination.session.status, "exited");
+      supervisor.dispose(session.sessionId);
+    }
+  }
+});
