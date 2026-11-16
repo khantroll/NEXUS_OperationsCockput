@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { HomeAnchor } from "../../contracts/src/index.js";
-import { resolveHomeAnchor } from "../src/layout.js";
+import { exportRedactedLayout, importRedactedLayout, resolveHomeAnchor } from "../src/layout.js";
 
 const anchor: HomeAnchor = {
   workspaceId: "workspace-1",
@@ -45,4 +45,26 @@ test("existing group and display remain unchanged", () => {
   assert.equal(resolved.displayId, "monitor-2");
   assert.equal(resolved.usedGroupFallback, false);
   assert.equal(resolved.usedDisplayFallback, false);
+});
+
+test("redacted layout export omits session and window identity", () => {
+  const exported = exportRedactedLayout([{
+    panelId: "panel-1",
+    sessionId: "secret-session-id",
+    workspaceId: "workspace-1",
+    placement: "floating",
+    homeAnchor: anchor,
+    revision: 8,
+    surfaceId: "surface-secret",
+    windowId: "window-secret",
+  }]);
+  assert.doesNotMatch(exported, /secret-session|surface-secret|window-secret/);
+  assert.deepEqual(importRedactedLayout(exported), [{
+    panelId: "panel-1",
+    workspaceId: "workspace-1",
+    placement: "floating",
+    homeAnchor: anchor,
+    revision: 8,
+  }]);
+  assert.throws(() => importRedactedLayout(exported.replace('"panelId": "panel-1"', '"panelId": ""')), /invalid redacted panel/);
 });

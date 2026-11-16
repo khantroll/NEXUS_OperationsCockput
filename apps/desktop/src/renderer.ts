@@ -87,6 +87,20 @@ function App(): React.JSX.Element {
     setAttachmentId(null);
   };
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey || !event.shiftKey || event.altKey) return;
+      if (event.key === "p") { event.preventDefault(); dispatch({ op: "park", panelId: panel.panelId }); }
+      if (event.key === "s") { event.preventDefault(); dispatch({ op: "summon", panelId: panel.panelId, targetSurface: "main" }); }
+      if (event.key === "b") { event.preventDefault(); dispatch({ op: "snapBack", panelId: panel.panelId }); }
+      if (event.key === "h") {
+        event.preventDefault();
+        dispatch({ op: "setHome", panelId: panel.panelId, anchor: { ...panel.homeAnchor, layoutRevision: panel.homeAnchor.layoutRevision + 1 } });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panel]);
+  useEffect(() => {
     void Promise.all([
       window.nexusLayout.load("demo-panel"),
       window.nexusWorkspace.list(),
@@ -165,6 +179,8 @@ function App(): React.JSX.Element {
             React.createElement("button", { onClick: () => dispatch({ op: "park", panelId: panel.panelId }) }, "Park"),
             React.createElement("button", { onClick: () => dispatch({ op: "summon", panelId: panel.panelId, targetSurface: "main" }) }, "Summon"),
             React.createElement("button", { onClick: () => dispatch({ op: "snapBack", panelId: panel.panelId }) }, "SnapBack"),
+            React.createElement("button", { onClick: () => dispatch({ op: "setHome", panelId: panel.panelId, anchor: { ...panel.homeAnchor, layoutRevision: panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
+            React.createElement("span", { style: styles.muted }, "Ctrl+Shift: P park · S summon · B SnapBack · H home"),
           ),
         ),
       ),

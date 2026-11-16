@@ -16,6 +16,8 @@ The session shelf also reads persisted non-secret session state so a relaunch-on
 visible without implying that its prior process is still alive.
 Terminal input is opt-in: renderer attachments default to read-only, only one write attachment
 is allowed per session, and writes are bounded and owner-checked at the IPC boundary.
+The shell exposes Set Home and keyboard shortcuts for Park, Summon, SnapBack, and Set Home;
+these remain presentation-only reducer commands.
 
 Validated:
 

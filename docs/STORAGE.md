@@ -18,6 +18,8 @@ Validated:
 - Panel batch writes are transactional and roll back on foreign-key failure.
 - Migrations now include a stable workspace registry ordered by display name and ID.
 - Workspace deletion is explicit and rejects workspaces that still contain panels.
+- Portable layout exchange belongs to the core adapter and exports only redacted panel placement
+  metadata; session, surface, and window identity are not included.
 
 Not yet implemented:
 
