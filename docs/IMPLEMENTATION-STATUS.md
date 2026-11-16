@@ -1,6 +1,6 @@
 # Implementation Status
 
-Status: M0 acceptance complete; M1 implementation in progress pending final review/CI | 2026-11-16
+Status: M0 and M1 acceptance complete; M2 not started | 2026-11-16
 
 The current architectural decisions are recorded in `docs/DECISIONS.md` (ADR-008 through
 ADR-012). They are accepted constraints for this milestone, not evidence that the related
@@ -87,12 +87,8 @@ Validated locally on Windows with Node 24.21.0:
 - Desktop restart/recovery smoke passed in two Electron processes: the second process
   reconciled the prior PTY as `unknown`/`relaunch-only` and launched a new PID under the same
   stable session ID. This does not claim PTY survival across supervisor failure.
-- GitHub Actions Windows validation passed for commit `327e977`: install, typecheck, 26 tests,
-  desktop build/reload/restart smoke, and production audit.
-- The explicit two-panel/two-PTY lifecycle acceptance test passes locally and in Windows CI with
-  27 total tests.
-- The workspace registry and v1-to-v2 metadata migration tests pass locally with 29 total tests.
-- The session shelf listing and desktop reload smoke pass locally with 30 total tests.
+- GitHub Actions Windows validation passed for commit `ef5e65a` in run `43894662656`: install,
+  typecheck, 36 tests, desktop build/reload smoke, and production audit.
 - The shell profile launch boundary passes a live supervisor test; Claude/Codex executable
   availability is not claimed until those tools are installed in the target host environment.
 - Desktop reload smoke also verifies that read-only input is rejected at the IPC boundary.
@@ -100,11 +96,13 @@ Validated locally on Windows with Node 24.21.0:
   the keyboard lifecycle controls installed.
 - Desktop reload smoke covers layout export/import, input authorization, profile interrupt/restart/
   terminate, stable session identity, bounded replay after restart, and attachment cleanup.
+- Independent read-only review verified credential rejection, restart prevalidation, attached-session
+  safety, renderer lifecycle error handling, and the final CI evidence; findings were resolved before
+  acceptance.
 
 ## Remaining limitation
 
-1. Run the independent read-only M1 review and Windows CI for the final increment.
-2. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
+1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
    suppression or replacement is validated.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
