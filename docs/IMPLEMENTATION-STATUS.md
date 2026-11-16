@@ -69,12 +69,15 @@ Validated locally on Windows with Node 24.21.0:
 - Desktop restart/recovery smoke passed in two Electron processes: the second process
   reconciled the prior PTY as `unknown`/`relaunch-only` and launched a new PID under the same
   stable session ID. This does not claim PTY survival across supervisor failure.
+- GitHub Actions Windows validation passed for commit `327e977`: install, typecheck, 26 tests,
+  desktop build/reload/restart smoke, and production audit.
 
 ## Next unfinished work
 
 1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
    suppression or replacement is validated.
-2. Run the new Windows CI workflow and complete the remaining M0 acceptance checklist.
+2. Complete the remaining M0 acceptance checklist, including the full two-session Park →
+   Summon → SnapBack → renderer-reload demonstration with input authorization evidence.
 
 The current reducer records presentation state only. It does not yet resolve an anchor
 against a persisted layout, clamp missing displays, or provide durable session, Electron,
