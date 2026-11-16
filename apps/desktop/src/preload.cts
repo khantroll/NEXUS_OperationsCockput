@@ -15,6 +15,7 @@ const host = {
 };
 const layout = {
   save: (panels: unknown[]) => ipcRenderer.invoke("nexus:layout:save", panels),
+  load: (panelId: string) => ipcRenderer.invoke("nexus:layout:load", panelId),
 };
 
 contextBridge.exposeInMainWorld("nexusShell", {

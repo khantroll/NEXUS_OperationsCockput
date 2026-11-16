@@ -13,7 +13,7 @@ declare global {
       detach: (attachmentId: string) => Promise<void>;
       onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
     };
-    nexusLayout: { save: (panels: PanelRecord[]) => Promise<void> };
+    nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null> };
   }
 }
 
@@ -47,6 +47,7 @@ function App(): React.JSX.Element {
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
   const [hostOutput, setHostOutput] = useState("");
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
+  const [layoutLoaded, setLayoutLoaded] = useState(false);
   const persistPanel = (nextPanel: PanelRecord): void => {
     if (nextPanel.sessionId !== "demo-session") void window.nexusLayout.save([nextPanel]).catch(() => undefined);
   };
@@ -73,15 +74,20 @@ function App(): React.JSX.Element {
     setAttachmentId(null);
   };
   useEffect(() => {
+    void window.nexusLayout.load("demo-panel")
+      .then((saved) => { if (saved) setPanel(saved); setLayoutLoaded(true); })
+      .catch(() => setLayoutLoaded(true));
+  }, []);
+  useEffect(() => {
     const unsubscribe = window.nexusHost.onData((payload) => {
       if (payload.attachmentId === attachmentId) setHostOutput((current) => (current + payload.data).slice(-4000));
     });
-    if (attachmentId === null) void connectHost();
+    if (layoutLoaded && attachmentId === null) void connectHost();
     return unsubscribe;
   // The bridge owns cleanup when the renderer is reloaded; this subscription only
   // needs to follow the current attachment ID for the lifetime of this renderer.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachmentId]);
+  }, [attachmentId, layoutLoaded]);
 
   return React.createElement(
     "main",
@@ -108,7 +114,12 @@ function App(): React.JSX.Element {
       ),
       React.createElement("section", { style: styles.canvas },
         React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / DEFAULT"),
-        React.createElement("article", { style: styles.panel },
+          React.createElement("article", {
+            style: styles.panel,
+            "data-panel-id": panel.panelId,
+            "data-panel-placement": panel.placement,
+            "data-panel-revision": panel.revision,
+          },
           React.createElement("div", { style: styles.panelHeader },
             React.createElement("div", null,
               React.createElement("strong", null, "Terminal presentation"),

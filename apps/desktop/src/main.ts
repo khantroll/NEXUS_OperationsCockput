@@ -90,6 +90,11 @@ function registerHostIpc(): void {
     if (!Array.isArray(panels) || !panels.every(isPanelRecord)) throw new Error("invalid layout metadata");
     metadataStore.savePanels(panels);
   });
+  ipcMain.handle("nexus:layout:load", (event, panelId: unknown) => {
+    assertRenderer(event);
+    if (typeof panelId !== "string" || panelId.length === 0) throw new Error("invalid panel ID");
+    return metadataStore.loadPanel(panelId);
+  });
 }
 
 async function createWindow(): Promise<BrowserWindow> {
@@ -132,6 +137,12 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
   const first = await evaluate<{ sessionId: string; pid: number }>("initial start", "window.nexusHost.startDemoSession()");
   const firstAttachment = await evaluate<{ attachmentId: string; replay: string }>("initial attach", "window.nexusHost.attach('desktop-demo-session')");
   if (first.sessionId !== demoSessionId || first.pid <= 0) throw new Error("initial host session did not start");
+  await evaluate<void>("save layout metadata", `window.nexusLayout.save([{
+    panelId: 'demo-panel', sessionId: '${demoSessionId}', workspaceId: 'default',
+    placement: 'parked', revision: 2,
+    homeAnchor: { workspaceId: 'default', groupId: 'terminals', splitPath: ['root', 'center'],
+      tabIndex: 0, fallbackZone: 'center', layoutRevision: 1 }
+  }])`);
   await new Promise((resolve) => setTimeout(resolve, 700));
   const firstReplay = await evaluate<{ attachmentId: string; replay: string }>("initial replay", "window.nexusHost.attach('desktop-demo-session')");
   if (!firstReplay.replay.includes("ipc-tick-")) throw new Error("initial replay was empty");
@@ -145,6 +156,19 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
     throw new Error("renderer reload created a duplicate host session");
   }
   if (!secondAttachment.replay.includes("ipc-tick-")) throw new Error("reloaded renderer did not recover replay");
+  let renderedPanel: { placement: string; revision: number } | null = null;
+  for (let attempt = 0; attempt < 30 && renderedPanel === null; attempt += 1) {
+    renderedPanel = await evaluate<{ placement: string; revision: number } | null>("inspect restored layout", `(() => {
+      const panel = document.querySelector('[data-panel-id="demo-panel"]');
+      return panel ? { placement: panel.getAttribute('data-panel-placement'), revision: Number(panel.getAttribute('data-panel-revision')) } : null;
+    })()`);
+    if (renderedPanel === null) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const persistedPanel = await evaluate<{ placement: string; revision: number } | null>("verify persisted layout", "window.nexusLayout.load('demo-panel')");
+  if (renderedPanel?.placement !== "parked" || renderedPanel.revision !== 2) {
+    const body = await evaluate<string>("inspect rendered body", "document.body.innerHTML.slice(0, 1000)");
+    throw new Error(`renderer reload did not recover persisted layout metadata: rendered=${JSON.stringify(renderedPanel)} persisted=${JSON.stringify(persistedPanel)} body=${JSON.stringify(body)}`);
+  }
   await evaluate<void>("detach reloaded attachment", `window.nexusHost.detach('${secondAttachment.attachmentId}')`);
   console.log("NEXUS reload smoke passed", { sessionId: second.sessionId, pid: second.pid });
 }

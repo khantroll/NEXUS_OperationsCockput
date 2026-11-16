@@ -15,6 +15,8 @@ Validated:
 - `npm run build --workspace @nexus/desktop`
 - `npm run typecheck --workspace @nexus/desktop`
 - `npm run smoke:reload --workspace @nexus/desktop`
+- Reload smoke restores the renderer's persisted panel placement and revision, not just the
+  main-process host session.
 - Electron binary `v45.3.2`
 - `npm audit --omit=dev`: 0 vulnerabilities
 
@@ -23,5 +25,6 @@ Not yet claimed:
 - The lab supervisor currently runs in Electron main, not a separately supervised host
   process; main-process crash survival is therefore unclaimed.
 - The shell now opens a per-user SQLite metadata database and records PTY lifecycle metadata;
-  durable process survival across supervisor failure and a full terminal renderer remain out of scope.
+  accepted panel transitions persist and reload through the validated layout bridge. Durable
+  process survival across supervisor failure and a full terminal renderer remain out of scope.
 - No production packaging or code signing is configured.
