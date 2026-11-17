@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./supervisor": "./src/supervisor.ts"
+    "./supervisor": "./src/supervisor.ts",
+    "./tmux": "./src/tmux.ts"
   },
   "dependencies": {
     "@nexus/contracts": "0.1.0",

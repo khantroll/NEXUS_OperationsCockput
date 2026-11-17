@@ -89,6 +89,10 @@ runtime behavior is already implemented.
   Integration sources loaded by the desktop host must avoid TS parameter properties and relative
   `.js` value imports (Node strip-only mode); use package self-imports.
 
+- M2.7 adds `TmuxBackend` for Linux/tmux-hosted sessions (see ROADMAP). Unit tests use a fake runner; one
+  integration tests drive real tmux (skipped when tmux is absent; run locally against tmux 3.6a). The
+  `linux-tmux` CI job is added but has not yet run.
+
 ## Evidence
 
 Validated locally on Windows with Node 24.21.0:

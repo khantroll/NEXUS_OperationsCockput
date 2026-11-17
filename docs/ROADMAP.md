@@ -54,6 +54,16 @@ calendar estimates.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.
 - Browser provider matrix for ChatGPT/Claude/Gemini (native, external fallback, auth UX).
+- M2.7 tmux backend: `TmuxBackend` (packages/host-agent/src/tmux.ts) owns sessions in a dedicated tmux server
+  (`tmux -L nexus-cockpit`, tmux >= 3.0, argv-only, no shell) so they survive a supervisor/desktop restart; it can
+  start, list (with exit codes via remain-on-exit), capture bounded scrollback, send literal input,
+  interrupt, and idempotently kill, and maps survivors to `reconnectable` records. It is not yet wired into
+  the desktop host, the companion, or profile launching, and input authorization/leases stay with callers.
+  tmux treats any argument ending in `;` as a command separator and runs a lone command argument through
+  `sh -c`; both were reproduced against real tmux during review, so `start` refuses `;`-terminated
+  file/args/cwd, wraps a lone command in `env --`, and sends trailing `;` input as hex bytes. Regression
+  tests cover each. Validated with real tmux 3.6a (an MSYS build run from Windows). A `linux-tmux` CI job
+  is configured but has not run yet, so nothing is verified on a native Linux host.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations
