@@ -80,8 +80,20 @@ calendar estimates.
   profiles (host or ~/.ssh/config alias, user, port, key-file path, optional remote tmux session) and resolves
   them to an argv-only `ssh` invocation: host-key checking is never disabled, nothing may start with `-`, and
   authentication stays with ssh (agent, key, or prompt in the PTY). Windows uses the OS OpenSSH by absolute
-  path. Not yet wired to a profiles file, IPC or UI; the UI also has no interactive terminal input yet, which
-  an SSH session needs (see next steps).
+  path. Wired to a profiles file, IPC and UI in M2.10.
+- M2.10 interactive terminals and SSH UI: profile panels now use xterm.js (keyboard input over a write
+  attachment, paste chunking, resize that follows the pane via a new `PtySupervisor.resize`), with a
+  read-only fallback if another view already holds the writer. A "Launch shell" button was added. SSH
+  profiles live in a user-editable `ssh-profiles.json` in the app's userData folder; the shelf lists them as
+  one-click Connect buttons, reports bad entries without losing good ones, and has Edit/Reload buttons. The
+  renderer sends only a profile ID; the main process builds the `ssh` argv from the validated file.
+  Verified by driving the real app over the DevTools protocol (typed input echoed and executed; the PTY
+  followed the pane width; SSH profile launched ssh in a PTY). Not verified against a live SSH server.
+  Review fixes: a page reload releases its write attachments (so recovered terminals stay writable), output
+  arriving before a terminal mounts is buffered and flushed in order, resize is keyed to the caller's own
+  writable attachment, pastes are sent through one ordered queue in surrogate-safe chunks, and the profiles
+  file is capped at 256 KB. SSH panels have no Interrupt/Restart/Terminate buttons and exited panels cannot
+  yet be closed (type `exit` or Ctrl+D to end a session).
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations

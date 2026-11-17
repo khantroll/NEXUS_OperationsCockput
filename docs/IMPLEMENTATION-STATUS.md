@@ -94,8 +94,10 @@ runtime behavior is already implemented.
   `linux-tmux` CI job is added but has not yet run.
 - M2.8 adds the `attach-read` output endpoint (see ROADMAP), tested over HTTP (capability separation,
   cross-host denial, bounds, disabled-by-default) and verified against a live desktop session.
-- M2.9 adds the SSH profile resolver (unit-tested; not wired to UI). The `linux-tmux` CI job passed on
+- M2.9 adds the SSH profile resolver (unit-tested; wired to the UI in M2.10). The `linux-tmux` CI job passed on
   ubuntu-latest for commit `1ad35fe`, which verifies `TmuxBackend` on native Linux.
+- M2.10 adds xterm.js interactive terminals, PTY resize, a Launch shell button, and the SSH profiles file
+  with a Connect list (see ROADMAP). New runtime dependencies: @xterm/xterm and @xterm/addon-fit.
 
 ## Evidence
 

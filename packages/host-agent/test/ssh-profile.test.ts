@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { assertSshProfile, resolveSshProfile, type SshProfileRecord } from "../src/ssh-profile.js";
+import { assertSshProfile, parseSshProfileFile, resolveSshProfile, type SshProfileRecord } from "../src/ssh-profile.js";
 
 const base: SshProfileRecord = { profileId: "p1", name: "Build box", host: "build.example.com" };
 
@@ -52,4 +52,25 @@ test("host aliases, IPv4 and IPv6 literals are accepted", () => {
   for (const host of ["myalias", "my_alias", "10.0.0.5", "fe80::1", "a.b-c.example.org"]) {
     assert.doesNotThrow(() => resolveSshProfile({ ...base, host }, "linux"), host);
   }
+});
+
+test("profiles file: valid entries load, bad entries are reported and skipped", () => {
+  const text = JSON.stringify([
+    { profileId: "a", name: "Alpha", host: "alpha.example.com", user: "me" },
+    { profileId: "a", name: "Dup", host: "dup.example.com" },
+    { profileId: "b", name: "Bad host", host: "-oProxyCommand=x" },
+    { profileId: "c", name: "Gamma", host: "gamma", remoteTmuxSession: "main" },
+    "not an object",
+  ]);
+  const result = parseSshProfileFile(text);
+  assert.deepEqual(result.profiles.map((p) => p.profileId), ["a", "c"]);
+  assert.equal(result.errors.length, 3);
+  assert.match(result.errors.join("\n"), /duplicate profileId/);
+  assert.match(result.errors.join("\n"), /invalid host/);
+});
+
+test("profiles file: malformed JSON and non-arrays give one clear error", () => {
+  assert.match(parseSshProfileFile("{oops").errors[0] ?? "", /not valid JSON/);
+  assert.deepEqual(parseSshProfileFile("{}").errors, ["the file must contain a JSON array of profiles"]);
+  assert.deepEqual(parseSshProfileFile("[]"), { profiles: [], errors: [] });
 });

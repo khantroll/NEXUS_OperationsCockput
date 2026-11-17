@@ -192,3 +192,20 @@ test("optional metadata sink tracks PTY lifecycle without owning the process", a
   assert.equal(records.at(-1)?.createdAt, records[0]?.createdAt);
   supervisor.dispose(session.sessionId);
 });
+
+test("resize validates bounds, rejects unknown sessions, and applies to a live PTY", async () => {
+  const supervisor = new PtySupervisor();
+  const session = supervisor.start(shell, nodeInShell, { sessionId: "resize-1" });
+  try {
+    supervisor.resize(session.sessionId, 100, 30);
+    assert.throws(() => supervisor.resize(session.sessionId, 5, 30), RangeError);
+    assert.throws(() => supervisor.resize(session.sessionId, 100, 2), RangeError);
+    assert.throws(() => supervisor.resize(session.sessionId, Number.NaN, 30), RangeError);
+    assert.throws(() => supervisor.resize(session.sessionId, 100.5, 30), RangeError);
+    assert.throws(() => supervisor.resize(session.sessionId, 501, 30), RangeError);
+    assert.throws(() => supervisor.resize("nope", 100, 30), /unknown session/);
+  } finally {
+    await supervisor.terminate(session.sessionId);
+    supervisor.dispose(session.sessionId);
+  }
+});

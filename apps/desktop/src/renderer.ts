@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { CommandEnvelope, PanelCommand, PanelRecord, WorkspaceRecord } from "../../../packages/contracts/src/index.js";
 import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
+import { TerminalView, discardTerminalBuffer, routeTerminalData } from "./terminal-view.js";
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ declare global {
       attach: (sessionId: string, mode?: "read" | "write") => Promise<{ attachmentId: string; replay: string }>;
       detach: (attachmentId: string) => Promise<void>;
       write: (attachmentId: string, data: string) => Promise<void>;
+      resize: (attachmentId: string, cols: number, rows: number) => Promise<void>;
       interrupt: (sessionId: string) => Promise<unknown>;
       restartProfile: (sessionId: string, profile: unknown) => Promise<unknown>;
       terminate: (sessionId: string, confirmationToken: string) => Promise<unknown>;
@@ -20,6 +22,11 @@ declare global {
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null>; list: (workspaceId: string) => Promise<PanelRecord[]>; export: (workspaceId: string) => Promise<string>; import: (serialized: string) => Promise<unknown> };
     nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void> };
+    nexusSsh: {
+      list: () => Promise<{ path: string; errors: string[]; profiles: Array<{ profileId: string; name: string; host: string; user?: string; port?: number; remoteTmuxSession?: string }> }>;
+      start: (profileId: string) => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number; name: string }>;
+      openFile: () => Promise<string | null>;
+    };
     nexusCompanion: { info: () => Promise<{ url: string; hostId: string; credentialsPath: string | null; credentialsWarning: string | null; enrollmentToken?: string } | null> };
     nexusSessions: { list: () => Promise<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>> };
   }
@@ -52,7 +59,7 @@ function command(panel: PanelRecord, payload: PanelCommand): CommandEnvelope<Pan
 
 function App(): React.JSX.Element {
   const [panel, setPanel] = useState(initialPanel);
-  type ProfilePanel = { panel: PanelRecord; attachmentId: string; output: string; label: string; profile?: { profileId: string; name: string; executable: "claude" | "codex" | "shell"; args: string[] } };
+  type ProfilePanel = { panel: PanelRecord; attachmentId: string; output: string; writable: boolean; label: string; profile?: { profileId: string; name: string; executable: "claude" | "codex" | "shell"; args: string[] } };
   const [profilePanels, setProfilePanels] = useState<ProfilePanel[]>([]);
   const [workspace, setWorkspace] = useState<WorkspaceRecord>({
     workspaceId: "default",
@@ -62,6 +69,8 @@ function App(): React.JSX.Element {
   });
   const [companionInfo, setCompanionInfo] = useState<Awaited<ReturnType<Window["nexusCompanion"]["info"]>>>(null);
   const [companionDismissed, setCompanionDismissed] = useState(false);
+  const [sshInfo, setSshInfo] = useState<Awaited<ReturnType<Window["nexusSsh"]["list"]>> | null>(null);
+  const [sshError, setSshError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>>([]);
   const [lifecycleErrors, setLifecycleErrors] = useState<Record<string, string>>({});
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
@@ -96,9 +105,31 @@ function App(): React.JSX.Element {
     if (attachmentId) await window.nexusHost.detach(attachmentId);
     setAttachmentId(null);
   };
+  /** Prefer an input-capable attachment; fall back to read-only if another view already holds the writer. */
+  const attachInteractive = async (sessionId: string): Promise<{ attachmentId: string; replay: string; writable: boolean }> => {
+    try {
+      return { ...(await window.nexusHost.attach(sessionId, "write")), writable: true };
+    } catch {
+      return { ...(await window.nexusHost.attach(sessionId, "read")), writable: false };
+    }
+  };
   const launchProfile = async (profile: { profileId: string; name: string; executable: "claude" | "codex" | "shell"; args: string[] }): Promise<void> => {
-    const session = await window.nexusHost.startProfile(profile);
-    const attached = await window.nexusHost.attach(session.sessionId, "read");
+    await presentSession(await window.nexusHost.startProfile(profile), profile.name, profile);
+  };
+  const refreshSsh = (): void => {
+    void window.nexusSsh.list().then((info) => { setSshInfo(info); setSshError(null); }).catch(() => setSshError("could not load SSH profiles"));
+  };
+  const connectSsh = async (profileId: string): Promise<void> => {
+    try {
+      const session = await window.nexusSsh.start(profileId);
+      await presentSession(session, session.name);
+      setSshError(null);
+    } catch (error) {
+      setSshError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const presentSession = async (session: { sessionId: string; pid: number; status: string }, label: string, profile?: { profileId: string; name: string; executable: "claude" | "codex" | "shell"; args: string[] }): Promise<void> => {
+    const attached = await attachInteractive(session.sessionId);
     const profilePanel: PanelRecord = {
       panelId: "profile-panel-"+session.sessionId,
       sessionId: session.sessionId,
@@ -107,7 +138,7 @@ function App(): React.JSX.Element {
       homeAnchor: { ...initialPanel.homeAnchor, workspaceId: workspace.workspaceId, groupId: "profiles", tabIndex: profilePanels.length, layoutRevision: 1 },
       revision: 1,
     };
-    setProfilePanels((current) => [...current, { panel: profilePanel, attachmentId: attached.attachmentId, output: attached.replay, label: profile.name, profile }]);
+    setProfilePanels((current) => [...current, { panel: profilePanel, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable, label, ...(profile === undefined ? {} : { profile }) }]);
     void window.nexusLayout.save([profilePanel]).catch(() => undefined);
     setSessions((current) => [...current.filter((candidate) => candidate.sessionId !== session.sessionId), {
       sessionId: session.sessionId, kind: "local-pty", transport: "connected", process: session.status, recovery: "none", pid: session.pid,
@@ -123,9 +154,9 @@ function App(): React.JSX.Element {
       if (operation === "restart" && entry.profile) {
         await window.nexusHost.detach(entry.attachmentId);
         await window.nexusHost.restartProfile(entry.panel.sessionId, entry.profile);
-        const attached = await window.nexusHost.attach(entry.panel.sessionId, "read");
+        const attached = await attachInteractive(entry.panel.sessionId);
         setProfilePanels((current) => current.map((candidate) => candidate.panel.panelId === entry.panel.panelId
-          ? { ...candidate, attachmentId: attached.attachmentId, output: attached.replay } : candidate));
+          ? { ...candidate, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable } : candidate));
         setSessions((current) => current.map((candidate) => candidate.sessionId === entry.panel.sessionId ? { ...candidate, process: "running", transport: "connected", recovery: "none" } : candidate));
         setLifecycleErrors((current) => { const next = { ...current }; delete next[entry.panel.panelId]; return next; });
         return;
@@ -138,9 +169,12 @@ function App(): React.JSX.Element {
     } catch (error) {
       setLifecycleErrors((current) => ({ ...current, [entry.panel.panelId]: error instanceof Error ? error.message : String(error) }));
       try {
-        const attached = await window.nexusHost.attach(entry.panel.sessionId, "read");
+        // Best effort: if the old attachment is still live it would otherwise keep the writer lock.
+        await window.nexusHost.detach(entry.attachmentId).catch(() => undefined);
+        discardTerminalBuffer(entry.attachmentId);
+        const attached = await attachInteractive(entry.panel.sessionId);
         setProfilePanels((current) => current.map((candidate) => candidate.panel.panelId === entry.panel.panelId
-          ? { ...candidate, attachmentId: attached.attachmentId, output: attached.replay } : candidate));
+          ? { ...candidate, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable } : candidate));
       } catch { /* preserve the visible failure and session shelf state */ }
     }
   };
@@ -153,6 +187,10 @@ function App(): React.JSX.Element {
       return { ...entry, panel: transition.record };
     }));
   };
+  useEffect(() => {
+    refreshSsh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     void window.nexusCompanion.info().then(setCompanionInfo).catch(() => setCompanionInfo(null));
   }, []);
@@ -182,15 +220,11 @@ function App(): React.JSX.Element {
         setSessions(persistedSessions);
         void Promise.all(savedPanels.filter((candidate) => candidate.panelId !== "demo-panel").map(async (savedPanel) => {
           try {
-            const attached = await window.nexusHost.attach(savedPanel.sessionId, "read");
-            return { panel: savedPanel, attachmentId: attached.attachmentId, output: attached.replay, label: "Recovered terminal" };
-          } catch {
-            return null;
-          }
-        })).then((recovered) => {
-          const restored = recovered.filter((entry): entry is ProfilePanel => entry !== null);
-          setProfilePanels(restored);
-        });
+            const attached = await attachInteractive(savedPanel.sessionId);
+            const recovered: ProfilePanel = { panel: savedPanel, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable, label: "Recovered terminal" };
+            setProfilePanels((current) => [...current, recovered]);
+          } catch { /* session is gone; leave the saved panel out */ }
+        }));
         const current = workspaces.find((candidate) => candidate.workspaceId === "default");
         if (current) setWorkspace({ ...current, lastOpenedAt: new Date().toISOString() });
         else {
@@ -202,12 +236,10 @@ function App(): React.JSX.Element {
       })
       .catch(() => setLayoutLoaded(true));
   }, []);
+  useEffect(() => window.nexusHost.onData(routeTerminalData), []);
   useEffect(() => {
     const unsubscribe = window.nexusHost.onData((payload) => {
       if (payload.attachmentId === attachmentId) setHostOutput((current) => (current + payload.data).slice(-4000));
-      setProfilePanels((current) => current.map((entry) => payload.attachmentId === entry.attachmentId
-        ? { ...entry, output: (entry.output + payload.data).slice(-4000) }
-        : entry));
     });
     if (layoutLoaded && attachmentId === null) void connectHost();
     return unsubscribe;
@@ -242,8 +274,22 @@ function App(): React.JSX.Element {
               "● "+session.process+" · "+session.recovery+(session.pid ? " · pid "+session.pid : "")),
           )),
         React.createElement("div", { style: styles.profileControls },
+          React.createElement("button", { onClick: () => { void launchProfile({ profileId: "shell", name: "Shell", executable: "shell", args: [] }); } }, "Launch shell"),
           React.createElement("button", { onClick: () => { void launchProfile({ profileId: "claude-code", name: "Claude Code", executable: "claude", args: ["--version"] }); } }, "Launch Claude profile"),
           React.createElement("button", { onClick: () => { void launchProfile({ profileId: "codex-cli", name: "Codex CLI", executable: "codex", args: ["--version"] }); } }, "Launch Codex profile"),
+        ),
+        React.createElement("div", { style: styles.companionCard },
+          React.createElement("div", { style: styles.sectionLabel }, "SSH PROFILES"),
+          sshInfo && sshInfo.profiles.length > 0
+            ? sshInfo.profiles.map((profile) => React.createElement("button", { key: profile.profileId, onClick: () => { void connectSsh(profile.profileId); } },
+              "Connect: " + profile.name + " (" + (profile.user ? profile.user + "@" : "") + profile.host + (profile.remoteTmuxSession ? ", tmux" : "") + ")"))
+            : React.createElement("span", { style: styles.muted }, "No profiles yet. Click Edit, add entries like {\"profileId\":\"box\",\"name\":\"My box\",\"host\":\"example.com\",\"user\":\"me\",\"remoteTmuxSession\":\"main\"}, save, then Reload."),
+          ...(sshInfo?.errors ?? []).map((message, index) => React.createElement("span", { style: styles.error, key: "ssh-err-" + index }, message)),
+          sshError ? React.createElement("span", { style: styles.error }, sshError) : null,
+          React.createElement("div", { style: styles.controls },
+            React.createElement("button", { onClick: () => { void window.nexusSsh.openFile().then((problem) => { if (problem) setSshError(problem); }); } }, "Edit profiles file"),
+            React.createElement("button", { onClick: refreshSsh }, "Reload"),
+          ),
         ),
         companionInfo && !companionDismissed ? React.createElement("div", { style: styles.companionCard },
           React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, LOOPBACK)"),
@@ -290,7 +336,7 @@ function App(): React.JSX.Element {
               ),
               React.createElement("span", { style: styles.revision }, "rev "+entry.panel.revision),
             ),
-            React.createElement("pre", { style: styles.terminal }, entry.output || "$ profile launched\n> waiting for bounded output"),
+            React.createElement(TerminalView, { key: entry.attachmentId, host: window.nexusHost, sessionId: entry.panel.sessionId, attachmentId: entry.attachmentId, initialOutput: entry.output, writable: entry.writable }),
             React.createElement("div", { style: styles.controls },
               React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "park", panelId: entry.panel.panelId }) }, "Park"),
               React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),

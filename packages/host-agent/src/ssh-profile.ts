@@ -73,3 +73,39 @@ function sshExecutable(platform: string, environment: NodeJS.ProcessEnv): string
   if (platform === "win32") return path.join(environment.SystemRoot ?? "C:/Windows", "System32", "OpenSSH", "ssh.exe");
   return "ssh";
 }
+
+export interface SshProfileFileResult {
+  profiles: SshProfileRecord[];
+  /** Human-readable problems; invalid entries are skipped, never partially applied. */
+  errors: string[];
+}
+
+const maxProfiles = 100;
+
+/** Parses the user-editable profiles file. A bad entry is reported and skipped; the rest still load. */
+export function parseSshProfileFile(text: string): SshProfileFileResult {
+  const profiles: SshProfileRecord[] = [];
+  const errors: string[] = [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    return { profiles, errors: [`not valid JSON: ${error instanceof Error ? error.message : String(error)}`] };
+  }
+  if (!Array.isArray(parsed)) return { profiles, errors: ["the file must contain a JSON array of profiles"] };
+  if (parsed.length > maxProfiles) errors.push(`only the first ${maxProfiles} profiles are used`);
+  const seen = new Set<string>();
+  parsed.slice(0, maxProfiles).forEach((entry: unknown, index: number) => {
+    const label = typeof entry === "object" && entry !== null && typeof (entry as { name?: unknown }).name === "string"
+      ? `#${index + 1} (${(entry as { name: string }).name.slice(0, 40)})` : `#${index + 1}`;
+    try {
+      assertSshProfile(entry);
+      if (seen.has(entry.profileId)) throw new Error("duplicate profileId");
+      seen.add(entry.profileId);
+      profiles.push(entry);
+    } catch (error) {
+      errors.push(`profile ${label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  return { profiles, errors };
+}

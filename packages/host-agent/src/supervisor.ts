@@ -208,6 +208,17 @@ export class PtySupervisor {
     return this.snapshotManaged(managed);
   }
 
+  /** Resize the pseudo-terminal to match the visible terminal; a no-op for an exited session. */
+  public resize(sessionId: string, cols: number, rows: number): void {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) throw new Error(`unknown session: ${sessionId}`);
+    if (!Number.isInteger(cols) || cols < 20 || cols > 500 || !Number.isInteger(rows) || rows < 5 || rows > 200) {
+      throw new RangeError("invalid terminal size");
+    }
+    if (managed.status === "exited") return;
+    managed.pty.resize(cols, rows);
+  }
+
   public async terminate(sessionId: string): Promise<PtyTerminationResult> {
     const managed = this.sessions.get(sessionId);
     if (!managed) throw new Error(`unknown session: ${sessionId}`);

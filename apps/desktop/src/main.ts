@@ -1,7 +1,9 @@
-import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent, type WebContents } from "electron";
+import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PtySupervisor, type AttachmentMode, type PtyAttachment } from "@nexus/host-agent/supervisor";
+import { parseSshProfileFile, resolveSshProfile } from "@nexus/host-agent/ssh-profile";
 import { MetadataStore } from "@nexus/storage/metadata";
 import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type WorkspaceRecord } from "@nexus/contracts";
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
@@ -99,6 +101,57 @@ function registerCompanionIpc(): void {
   });
 }
 
+/**
+ * SSH profiles live in a user-editable JSON file. The renderer only ever sends a profile ID: the argv is
+ * built here from the validated file contents, so a compromised renderer cannot inject ssh options.
+ */
+function sshProfilesPath(): string {
+  return path.join(app.getPath("userData"), "ssh-profiles.json");
+}
+
+function loadSshProfiles(): ReturnType<typeof parseSshProfileFile> {
+  const file = sshProfilesPath();
+  try {
+    if (!fs.existsSync(file)) fs.writeFileSync(file, "[]\n", { flag: "wx" });
+    if (fs.statSync(file).size > 256 * 1024) return { profiles: [], errors: ["profiles file is larger than 256 KB"] };
+    return parseSshProfileFile(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    return { profiles: [], errors: [`cannot read profiles file: ${error instanceof Error ? error.message : String(error)}`] };
+  }
+}
+
+function registerSshIpc(): void {
+  ipcMain.handle("nexus:ssh:list", (event) => {
+    assertRenderer(event);
+    const { profiles, errors } = loadSshProfiles();
+    return {
+      path: sshProfilesPath(),
+      errors,
+      profiles: profiles.map(({ profileId, name, host, user, port, remoteTmuxSession }) => ({
+        profileId, name, host,
+        ...(user === undefined ? {} : { user }),
+        ...(port === undefined ? {} : { port }),
+        ...(remoteTmuxSession === undefined ? {} : { remoteTmuxSession }),
+      })),
+    };
+  });
+  ipcMain.handle("nexus:ssh:start", (event, profileId: unknown) => {
+    assertRenderer(event);
+    if (typeof profileId !== "string") throw new Error("invalid SSH profile request");
+    const profile = loadSshProfiles().profiles.find((candidate) => candidate.profileId === profileId);
+    if (!profile) throw new Error("unknown SSH profile");
+    const resolved = resolveSshProfile(profile);
+    const session = hostSupervisor.start(resolved.file, resolved.args, { sessionId: crypto.randomUUID() });
+    return { ...session, name: profile.name };
+  });
+  ipcMain.handle("nexus:ssh:open-file", async (event) => {
+    assertRenderer(event);
+    loadSshProfiles(); // creates the file on first use
+    const problem = await shell.openPath(sshProfilesPath());
+    return problem === "" ? null : problem;
+  });
+}
+
 function registerHostIpc(): void {
   ipcMain.handle("nexus:host:start-demo", (event) => {
     assertRenderer(event);
@@ -171,6 +224,14 @@ function registerHostIpc(): void {
     attachments.delete(attachmentId);
     if (writerBySession.get(attachment.sessionId) === attachmentId) writerBySession.delete(attachment.sessionId);
   });
+  ipcMain.handle("nexus:host:resize", (event, attachmentId: unknown, cols: unknown, rows: unknown) => {
+    assertRenderer(event);
+    if (typeof attachmentId !== "string" || typeof cols !== "number" || typeof rows !== "number") throw new Error("invalid terminal size");
+    const attachment = attachments.get(attachmentId);
+    if (!attachment || attachment.owner !== event.sender) throw new Error("unknown attachment");
+    if (attachment.handle.mode !== "write") throw new Error("read attachment cannot resize");
+    hostSupervisor.resize(attachment.sessionId, cols, rows);
+  });
   ipcMain.handle("nexus:host:write", (event, attachmentId: unknown, data: unknown) => {
     assertRenderer(event);
     if (typeof attachmentId !== "string" || typeof data !== "string") throw new Error("invalid write request");
@@ -241,6 +302,9 @@ async function createWindow(): Promise<BrowserWindow> {
     console.log(`[renderer ${source}:${line}] ${message}`);
   });
   window.webContents.on("destroyed", () => detachOwner(window.webContents));
+  // A reload keeps the same WebContents, so without this the old page would keep the writer lock and every
+  // recovered terminal would silently come back read-only.
+  window.webContents.on("did-start-loading", () => detachOwner(window.webContents));
   window.webContents.on("render-process-gone", () => detachOwner(window.webContents));
   await window.loadFile(rendererPath);
   return window;
@@ -372,6 +436,7 @@ app.whenReady().then(async () => {
   });
   registerHostIpc();
   registerCompanionIpc();
+  registerSshIpc();
   const recoveryMode = process.env.NEXUS_DESKTOP_RECOVERY_SEED === "1"
     ? "seed"
     : process.env.NEXUS_DESKTOP_RECOVERY_RELAUNCH === "1" ? "relaunch" : null;

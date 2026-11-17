@@ -9,6 +9,7 @@ const host = {
   attach: (sessionId: string, mode: "read" | "write" = "read") => ipcRenderer.invoke("nexus:host:attach", sessionId, mode),
   detach: (attachmentId: string) => ipcRenderer.invoke("nexus:host:detach", attachmentId),
   write: (attachmentId: string, data: string) => ipcRenderer.invoke("nexus:host:write", attachmentId, data),
+  resize: (attachmentId: string, cols: number, rows: number) => ipcRenderer.invoke("nexus:host:resize", attachmentId, cols, rows),
   interrupt: (sessionId: string) => ipcRenderer.invoke("nexus:host:interrupt", sessionId),
   restartProfile: (sessionId: string, profile: unknown) => ipcRenderer.invoke("nexus:host:restart-profile", sessionId, profile),
   terminate: (sessionId: string, confirmationToken: string) => ipcRenderer.invoke("nexus:host:terminate", sessionId, confirmationToken),
@@ -33,6 +34,11 @@ const sessions = {
   list: () => ipcRenderer.invoke("nexus:session:list"),
 };
 
+const ssh = {
+  list: () => ipcRenderer.invoke("nexus:ssh:list"),
+  start: (profileId: string) => ipcRenderer.invoke("nexus:ssh:start", profileId),
+  openFile: () => ipcRenderer.invoke("nexus:ssh:open-file"),
+};
 const companion = {
   info: () => ipcRenderer.invoke("nexus:companion:info"),
 };
@@ -46,3 +52,4 @@ contextBridge.exposeInMainWorld("nexusLayout", layout);
 contextBridge.exposeInMainWorld("nexusWorkspace", workspace);
 contextBridge.exposeInMainWorld("nexusSessions", sessions);
 contextBridge.exposeInMainWorld("nexusCompanion", companion);
+contextBridge.exposeInMainWorld("nexusSsh", ssh);
