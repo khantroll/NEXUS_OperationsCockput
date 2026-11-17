@@ -45,7 +45,8 @@ calendar estimates.
   (not in smoke runs) with a fresh single-user enrollment per run. The token is shown once in the
   session shelf (copy button) and written to `companion-credentials.json` in the app's userData
   directory; any existing file is replaced (links refused), the new file is created exclusively and empty,
-  restricted to the current user by SID with `icacls` (0600 elsewhere), the ACL is read back, and only
+  restricted to the current user by SID with `icacls` (0600 elsewhere), the ACL is read back (only that user,
+  SYSTEM and Administrators may appear, since an elevated token adds them and they can take ownership anyway), and only
   then is the token written; if confirmation fails nothing is written. Residual risk: a process that
   opened the empty file before restriction could keep its handle. The token is in-memory and
   valid for that run only; it is never logged. Still loopback only: no LAN access, TLS, durable

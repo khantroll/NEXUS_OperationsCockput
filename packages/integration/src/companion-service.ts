@@ -88,7 +88,7 @@ function writeUserOnlyFile(file: string, contents: string): void {
     const [account, sid] = currentWindowsUser();
     execFileSync(system32("icacls.exe"), [file, "/inheritance:r", "/grant:r", `*${sid}:F`], { stdio: "ignore" });
     const listing = execFileSync(system32("icacls.exe"), [file], { encoding: "utf8" });
-    if (!aclIsOnly(listing, file, account)) {
+    if (!aclIsRestricted(listing, file, account)) {
       // The listing is ACL metadata only (no secrets); it is included so a failure is diagnosable.
       throw new Error("could not confirm user-only permissions (expected " + JSON.stringify(account) + ", icacls said " + JSON.stringify(listing.slice(0, 400)) + ")");
     }
@@ -99,17 +99,32 @@ function writeUserOnlyFile(file: string, contents: string): void {
   writeFileSync(file, contents);
 }
 
-/** True only if the icacls listing contains exactly one ACE and it belongs to `account`. Fails closed. */
-export function aclIsOnly(icaclsOutput: string, file: string, account: string): boolean {
+/**
+ * True only if every ACE in the icacls listing belongs to `account` or to SYSTEM / Administrators, and
+ * `account` itself is present. SYSTEM and Administrators are tolerated because an elevated token's default
+ * DACL adds them and they can take ownership of any file regardless; any other principal (Everyone, Users,
+ * Authenticated Users, another account) fails closed.
+ */
+export function aclIsRestricted(icaclsOutput: string, file: string, account: string): boolean {
   const listing = icaclsOutput.split("Successfully processed")[0] ?? "";
   // icacls may print the long form of the path (e.g. RUNNER~1 -> runneradmin), so locate the file by
   // its final path component on the first line rather than by the full path we passed in.
   const baseName = basename(file.replaceAll("\\", "/")).toLowerCase();
-  const firstLine = listing.split(/\r?\n/)[0] ?? "";
+  const lines = listing.split(/\r?\n/);
+  const firstLine = lines[0] ?? "";
   const at = firstLine.toLowerCase().lastIndexOf(baseName);
   if (baseName.length === 0 || at < 0) return false;
-  const aces = (firstLine.slice(at + baseName.length) + "\n" + listing.split(/\r?\n/).slice(1).join("\n")).trim();
-  return aces.toLowerCase().startsWith(`${account.toLowerCase()}:(`) && (aces.match(/:\(/g) ?? []).length === 1;
+  const entries = [firstLine.slice(at + baseName.length), ...lines.slice(1)].map((line) => line.trim()).filter((line) => line.length > 0);
+  const allowed = new Set([account.toLowerCase(), "nt authority\\system", "builtin\\administrators"]);
+  let sawAccount = false;
+  for (const entry of entries) {
+    const match = entry.match(/^(.+?):\(/);
+    if (!match) return false;
+    const principal = (match[1] ?? "").toLowerCase();
+    if (!allowed.has(principal)) return false;
+    if (principal === account.toLowerCase()) sawAccount = true;
+  }
+  return sawAccount;
 }
 
 /** Current account name and SID from the OS (not from environment variables). */

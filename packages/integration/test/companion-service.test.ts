@@ -6,7 +6,7 @@ import path from "node:path";
 
 const icacls = path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "icacls.exe");
 import test from "node:test";
-import { aclIsOnly, startCompanionService } from "../src/companion-service.js";
+import { aclIsRestricted, startCompanionService } from "../src/companion-service.js";
 
 const readModel = { listSessions: () => [{ sessionId: "s1", kind: "local-pty", process: "running", transport: "connected" }] as const };
 
@@ -60,18 +60,18 @@ test("each start issues a different token and a wrong token is rejected", async 
   }
 });
 
-test("aclIsOnly accepts a single matching ACE and fails closed otherwise", () => {
+test("aclIsRestricted accepts a single matching ACE and fails closed otherwise", () => {
   const f = "C:\\x\\c.json";
   const me = "Xenos\\me";
   const tail = "\n\nSuccessfully processed 1 files; Failed processing 0 files";
-  assert.equal(aclIsOnly(f + " " + me + ":(F)" + tail, f, me), true);
-  assert.equal(aclIsOnly(f + " " + me + ":(F)\n      Everyone:(R)" + tail, f, me), false);
-  assert.equal(aclIsOnly(f + " Everyone:(R)" + tail, f, me), false);
-  assert.equal(aclIsOnly("garbage", f, me), false);
+  assert.equal(aclIsRestricted(f + " " + me + ":(F)" + tail, f, me), true);
+  assert.equal(aclIsRestricted(f + " " + me + ":(F)\n      Everyone:(R)" + tail, f, me), false);
+  assert.equal(aclIsRestricted(f + " Everyone:(R)" + tail, f, me), false);
+  assert.equal(aclIsRestricted("garbage", f, me), false);
   // icacls can print the long path form while we hold the 8.3 short form (seen on the GitHub Windows runner).
   const longForm = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\nexus-svc-x\\c.json";
-  assert.equal(aclIsOnly(longForm + " " + me + ":(F)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), true);
-  assert.equal(aclIsOnly(longForm + " " + me + ":(F)\n      Everyone:(R)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), false);
+  assert.equal(aclIsRestricted(longForm + " " + me + ":(F)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), true);
+  assert.equal(aclIsRestricted(longForm + " " + me + ":(F)\n      Everyone:(R)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), false);
 });
 
 test("an existing credentials file with broad permissions is replaced, not reused", { skip: process.platform !== "win32" }, async () => {
