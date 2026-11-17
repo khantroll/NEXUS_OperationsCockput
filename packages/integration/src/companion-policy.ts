@@ -6,7 +6,8 @@ export interface CompanionRequest {
   hostId: string;
   clientId: string;
   enrollmentToken: string;
-  network: "private" | "public";
+  /** "private" = loopback/tunnel network; "tls" = authenticated TLS transport; "public" = unprotected, always refused. */
+  network: "private" | "tls" | "public";
   capability: CompanionCapability;
 }
 
@@ -52,11 +53,12 @@ export class CompanionPolicy {
       return { accepted: false, reason: "invalid-request" };
     }
     if (!isCompanionCapability(candidate.capability)) return { accepted: false, reason: "invalid-request" };
-    if (candidate.network !== "private") return { accepted: false, reason: "public-network" };
+    if (candidate.network !== "private" && candidate.network !== "tls") return { accepted: false, reason: "public-network" };
     if (!this.enrollment.authenticate(candidate.hostId, candidate.enrollmentToken)) {
       return { accepted: false, reason: "invalid-credentials" };
     }
     if (!Number.isFinite(nowMs)) return { accepted: false, reason: "invalid-request" };
+    for (const [id, existing] of this.grants) if (Date.parse(existing.expiresAt) <= nowMs) this.grants.delete(id);
     const grant: CompanionGrant = {
       grantId: crypto.randomUUID(),
       hostId: candidate.hostId,

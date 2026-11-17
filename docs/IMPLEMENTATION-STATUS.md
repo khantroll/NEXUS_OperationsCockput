@@ -98,6 +98,9 @@ runtime behavior is already implemented.
   ubuntu-latest for commit `1ad35fe`, which verifies `TmuxBackend` on native Linux.
 - M2.10 adds xterm.js interactive terminals, PTY resize, a Launch shell button, and the SSH profiles file
   with a Connect list (see ROADMAP). New runtime dependencies: @xterm/xterm and @xterm/addon-fit.
+- M2.11 adds Interrupt/Terminate/Close on every panel. M2.12 adds the `local`/`private`/`https` companion
+  reachability modes (see ROADMAP); the default remains loopback-only. This supersedes the "not yet a LAN
+  service" note on M2.3 for configured installs; remote use has been tested only from this machine.
 
 ## Evidence
 

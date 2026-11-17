@@ -41,6 +41,7 @@ const ssh = {
 };
 const companion = {
   info: () => ipcRenderer.invoke("nexus:companion:info"),
+  openNetworkFile: () => ipcRenderer.invoke("nexus:companion:open-network-file"),
 };
 
 contextBridge.exposeInMainWorld("nexusShell", {

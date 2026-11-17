@@ -1,11 +1,23 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer as createTlsServer } from "node:https";
 import { isIP } from "node:net";
 import type { CompanionPolicy } from "./companion-policy.js";
+// Package self-import (value): the desktop host loads these .ts sources directly at runtime.
+import { isPrivateAddress, peerAllowed } from "@nexus/integration/companion-network";
 
 const maxBodyBytes = 16 * 1024;
 const maxAuthAttemptsPerMinute = 5;
+const maxAuthAttemptsPerMinuteTotal = 20; // across all sources, checked before any expensive token hash
+const maxConnectionsPerSource = 8;
 
 export interface CompanionHttpOptions {
+  /** Reachability mode. Default "local" (loopback only). "private" needs a private bind; "https" needs `tls`. */
+  mode?: "local" | "private" | "https";
+  /** Address to listen on. Local: loopback. Private: a private/CGNAT address. Https: any address (default 0.0.0.0). */
+  bind?: string;
+  /** Required (and only allowed) for mode "https". */
+  tls?: { cert: string | Buffer; key: string | Buffer };
+  /** @deprecated use `bind`. */
   host?: "127.0.0.1" | "::1";
   port?: number;
   readModel?: CompanionReadModel;
@@ -37,10 +49,13 @@ export interface CompanionHttpAddress {
   port: number;
 }
 
-/** Loopback-only HTTP transport for the authenticated read-only companion policy. */
+/** HTTP(S) transport for the authenticated read-only companion policy. Loopback-only unless configured otherwise. */
 export class CompanionHttpServer {
   private readonly server: Server;
+  private readonly mode: "local" | "private" | "https";
   private address: CompanionHttpAddress | null = null;
+  private readonly openPerSource = new Map<string, number>();
+  private globalAuth = { windowStartedAt: 0, count: 0 };
   private readonly authAttempts = new Map<string, { windowStartedAt: number; count: number }>();
 
   private readonly policy: CompanionPolicy;
@@ -50,14 +65,46 @@ export class CompanionHttpServer {
   public constructor(policy: CompanionPolicy, options: CompanionHttpOptions = {}) {
     this.policy = policy;
     this.options = options;
-    this.server = createServer((request, response) => { void this.handle(request, response); });
+    this.mode = options.mode ?? "local";
+    const listener = (request: IncomingMessage, response: ServerResponse): void => { void this.handle(request, response); };
+    if (this.mode === "https") {
+      if (!options.tls) throw new Error("https mode requires a TLS certificate and key");
+      this.server = createTlsServer({ cert: options.tls.cert, key: options.tls.key, minVersion: "TLSv1.2", handshakeTimeout: 5_000, connectionsCheckingInterval: 2_000 } as Parameters<typeof createTlsServer>[0], listener);
+    } else {
+      if (options.tls) throw new Error("TLS is only used in https mode");
+      this.server = createServer({ connectionsCheckingInterval: 2_000 }, listener);
+    }
+    // Slow or idle clients must not be able to hold sockets open; remote modes also cap concurrent connections.
+    this.server.headersTimeout = 10_000;
+    this.server.requestTimeout = 15_000;
+    this.server.keepAliveTimeout = 5_000;
+    this.server.timeout = 20_000;
+    if (this.mode !== "local") {
+      this.server.maxConnections = 64;
+      // Refuse disallowed peers at connect time (before TLS/HTTP parsing) and cap sockets per source.
+      this.server.on("connection", (socket) => {
+        const remote = socket.remoteAddress;
+        if (!peerAllowed(this.mode, remote)) { socket.destroy(); return; }
+        const key = sourceKey(remote);
+        const open = this.openPerSource.get(key) ?? 0;
+        if (open >= maxConnectionsPerSource) { socket.destroy(); return; }
+        this.openPerSource.set(key, open + 1);
+        socket.once("close", () => {
+          const left = (this.openPerSource.get(key) ?? 1) - 1;
+          if (left <= 0) this.openPerSource.delete(key); else this.openPerSource.set(key, left);
+        });
+      });
+      this.server.on("tlsClientError", (_error, socket) => { socket.destroy(); });
+    }
   }
 
   public async start(): Promise<CompanionHttpAddress> {
     if (this.address) return this.address;
-    const host = this.options.host ?? "127.0.0.1";
+    const host = this.options.bind ?? this.options.host ?? (this.mode === "https" ? "0.0.0.0" : "127.0.0.1");
     const port = this.options.port ?? 0;
-    if (host !== "127.0.0.1" && host !== "::1") throw new Error("companion server must bind to loopback");
+    if (isIP(host) === 0) throw new Error("companion bind must be an IP address");
+    if (this.mode === "local" && host !== "127.0.0.1" && host !== "::1") throw new Error("companion server must bind to loopback");
+    if (this.mode === "private" && !isPrivateAddress(host)) throw new Error("private mode must bind to a private/Tailscale/WireGuard address, not " + host);
     if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error("invalid companion port");
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => { this.server.off("listening", onListening); reject(error); };
@@ -82,7 +129,7 @@ export class CompanionHttpServer {
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     if (request.method === "GET" && request.url === "/health") {
-      writeJson(response, 200, { ok: true, mode: "loopback" });
+      writeJson(response, 200, { ok: true, mode: this.mode === "local" ? "loopback" : this.mode });
       return;
     }
     const outputPath = request.url?.match(/^\/v1\/companion\/hosts\/([^/]+)\/sessions\/([^/]+)\/output$/);
@@ -92,7 +139,7 @@ export class CompanionHttpServer {
     }
     const sessionPath = request.url?.match(/^\/v1\/companion\/hosts\/([^/]+)\/sessions$/);
     if (request.method === "GET" && sessionPath) {
-      if (!this.options.readModel || !isLoopback(request.socket.remoteAddress)) {
+      if (!this.options.readModel || !peerAllowed(this.mode, request.socket.remoteAddress)) {
         writeJson(response, 403, { error: "session-read-unavailable" });
         return;
       }
@@ -122,11 +169,11 @@ export class CompanionHttpServer {
       writeJson(response, 404, { error: "not-found" });
       return;
     }
-    if (!isLoopback(request.socket.remoteAddress)) {
-      writeJson(response, 403, { error: "private-network-required" });
+    if (!peerAllowed(this.mode, request.socket.remoteAddress)) {
+      writeJson(response, 403, { error: this.mode === "local" ? "loopback-required" : "private-network-required" });
       return;
     }
-    const source = request.socket.remoteAddress ?? "unknown";
+    const source = sourceKey(request.socket.remoteAddress);
     if (!this.consumeAuthBudget(source)) {
       writeJson(response, 429, { error: "rate-limited" });
       return;
@@ -138,17 +185,17 @@ export class CompanionHttpServer {
     }
     try {
       const body = await readJson(request);
-      const result = this.policy.authorize({ ...body, network: "private" }, new Date().toISOString());
+      const result = this.policy.authorize({ ...body, network: this.mode === "https" ? "tls" : "private" }, new Date().toISOString());
       writeJson(response, result.accepted ? 200 : 401, result);
     } catch (error) {
-      writeJson(response, 400, { error: error instanceof Error ? error.message : "invalid-request" });
+      writeJson(response, 400, { error: error instanceof Error && error.message === "request body too large" ? "request body too large" : "invalid-request" });
     }
   }
 
   /** `attach-read`: bounded tail of a session's terminal output. Read-only; there is no input route. */
   private handleOutput(request: IncomingMessage, response: ServerResponse, rawHost: string, rawSession: string): void {
     const source = this.options.outputSource;
-    if (!source || !isLoopback(request.socket.remoteAddress)) {
+    if (!source || !peerAllowed(this.mode, request.socket.remoteAddress)) {
       writeJson(response, 403, { error: "output-unavailable" });
       return;
     }
@@ -194,27 +241,45 @@ export class CompanionHttpServer {
 
   private consumeAuthBudget(source: string): boolean {
     const now = Date.now();
-    const current = this.authAttempts.get(source);
-    if (!current || now - current.windowStartedAt >= 60_000) {
-      this.authAttempts.set(source, { windowStartedAt: now, count: 1 });
-      return true;
+    // Global ceiling first: token verification is deliberately expensive, so total attempts are bounded no
+    // matter how many source addresses an attacker has.
+    if (now - this.globalAuth.windowStartedAt >= 60_000) this.globalAuth = { windowStartedAt: now, count: 0 };
+    if (this.globalAuth.count >= maxAuthAttemptsPerMinuteTotal) return false;
+    if (this.authAttempts.size > 4096) {
+      for (const [key, value] of this.authAttempts) if (now - value.windowStartedAt >= 60_000) this.authAttempts.delete(key);
     }
-    if (current.count >= maxAuthAttemptsPerMinute) return false;
-    current.count += 1;
+    const current = this.authAttempts.get(source);
+    if (current && now - current.windowStartedAt < 60_000) {
+      if (current.count >= maxAuthAttemptsPerMinute) return false;
+      current.count += 1;
+    } else {
+      if (this.authAttempts.size > 4096) return false; // many fresh sources at once: shed load rather than grow
+      this.authAttempts.set(source, { windowStartedAt: now, count: 1 });
+    }
+    this.globalAuth.count += 1;
     return true;
   }
+}
+
+/** Rate-limit/connection key: IPv4-mapped addresses collapse to IPv4; IPv6 is grouped by /64 (one subscriber can own the whole prefix). */
+function sourceKey(address: string | undefined): string {
+  if (!address) return "unknown";
+  const normalized = address.toLowerCase().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "").replace(/%.*$/, "");
+  if (isIP(normalized) !== 6) return normalized;
+  const groups = normalized.includes("::") ? expandV6(normalized) : normalized.split(":");
+  return groups.slice(0, 4).join(":");
+}
+
+function expandV6(address: string): string[] {
+  const [head = "", tail = ""] = address.split("::");
+  const a = head ? head.split(":") : [];
+  const b = tail ? tail.split(":") : [];
+  return [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill("0"), ...b];
 }
 
 function writeJson(response: ServerResponse, status: number, value: unknown): void {
   response.statusCode = status;
   response.end(JSON.stringify(value));
-}
-
-function isLoopback(address: string | undefined): boolean {
-  if (!address) return false;
-  if (address === "::1" || address === "127.0.0.1") return true;
-  if (isIP(address) === 6 && address.startsWith("::ffff:127.")) return true;
-  return false;
 }
 
 function redactSession(value: CompanionSessionView): CompanionSessionView | [] {

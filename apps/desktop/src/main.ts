@@ -8,6 +8,7 @@ import { MetadataStore } from "@nexus/storage/metadata";
 import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type WorkspaceRecord } from "@nexus/contracts";
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
 import { startCompanionService, type CompanionService } from "@nexus/integration/companion-service";
+import { parseCompanionNetworkConfig, type CompanionNetworkConfig } from "@nexus/integration/companion-network";
 import { createMetadataReadModel } from "@nexus/integration/metadata-read-model";
 import { createSupervisorOutputSource } from "@nexus/integration/supervisor-output-source";
 
@@ -19,6 +20,7 @@ let hostSupervisor: PtySupervisor;
 let metadataStore: MetadataStore;
 let companion: CompanionService | null = null;
 let companionTokenRevealed = false;
+let companionNetworkWarning: string | null = null;
 const companionHostId = "xenos-windows";
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
@@ -94,11 +96,38 @@ function registerCompanionIpc(): void {
   ipcMain.handle("nexus:companion:info", (event) => {
     assertRenderer(event);
     if (!companion) return null;
-    const { url, hostId, enrollmentToken, credentialsPath, credentialsWarning } = companion.info;
+    const { mode, url, hostId, enrollmentToken, credentialsPath, credentialsWarning } = companion.info;
     const reveal = !companionTokenRevealed;
     companionTokenRevealed = true;
-    return { url, hostId, credentialsPath, credentialsWarning, ...(reveal ? { enrollmentToken } : {}) };
+    return { mode, url, hostId, credentialsPath, credentialsWarning, networkWarning: companionNetworkWarning, ...(reveal ? { enrollmentToken } : {}) };
   });
+  ipcMain.handle("nexus:companion:open-network-file", async (event) => {
+    assertRenderer(event);
+    loadCompanionNetwork(); // creates the file on first use
+    const problem = await shell.openPath(companionNetworkPath());
+    return problem === "" ? null : problem;
+  });
+}
+
+/**
+ * How the companion is reachable is chosen in a user-editable file (default {"mode":"local"}). A missing,
+ * invalid or unstartable remote configuration falls back to loopback-only and says why, so a typo can
+ * never widen exposure.
+ */
+function companionNetworkPath(): string {
+  return path.join(app.getPath("userData"), "companion-network.json");
+}
+
+function loadCompanionNetwork(): { config: CompanionNetworkConfig; warning: string | null } {
+  const file = companionNetworkPath();
+  try {
+    if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify({ mode: "local" }) + "\n", { flag: "wx" });
+    if (fs.statSync(file).size > 16 * 1024) return { config: { mode: "local" }, warning: "companion-network.json is too large; using local mode" };
+    const parsed = parseCompanionNetworkConfig(fs.readFileSync(file, "utf8"));
+    return parsed.config ? { config: parsed.config, warning: null } : { config: { mode: "local" }, warning: "companion-network.json: " + parsed.error + "; using local mode" };
+  } catch (error) {
+    return { config: { mode: "local" }, warning: "cannot read companion-network.json: " + (error instanceof Error ? error.message : String(error)) + "; using local mode" };
+  }
 }
 
 /**
@@ -455,16 +484,28 @@ app.whenReady().then(async () => {
   }
   // Smoke runs must not overwrite the user's real credentials file or hold a listener.
   if (process.env.NEXUS_DESKTOP_SMOKE !== "1") {
+    const loaded = loadCompanionNetwork();
+    companionNetworkWarning = loaded.warning;
+    const startWith = (network: CompanionNetworkConfig): Promise<CompanionService> => startCompanionService({
+      hostId: companionHostId,
+      displayName: "Xenos Windows",
+      readModel: createMetadataReadModel(metadataStore),
+      outputSource: createSupervisorOutputSource(hostSupervisor, companionHostId),
+      credentialsPath: path.join(app.getPath("userData"), "companion-credentials.json"),
+      network,
+    });
     try {
-      companion = await startCompanionService({
-        hostId: companionHostId,
-        displayName: "Xenos Windows",
-        readModel: createMetadataReadModel(metadataStore),
-        outputSource: createSupervisorOutputSource(hostSupervisor, companionHostId),
-        credentialsPath: path.join(app.getPath("userData"), "companion-credentials.json"),
-      });
+      companion = await startWith(loaded.config);
     } catch (error) {
       console.error("NEXUS companion failed to start", error);
+      if (loaded.config.mode !== "local") {
+        companionNetworkWarning = loaded.config.mode + " mode failed (" + (error instanceof Error ? error.message : String(error)) + "); using local mode";
+        try {
+          companion = await startWith({ mode: "local" });
+        } catch (fallbackError) {
+          console.error("NEXUS companion local fallback failed", fallbackError);
+        }
+      }
     }
   }
   const window = await createWindow();

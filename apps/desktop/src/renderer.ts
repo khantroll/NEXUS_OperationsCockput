@@ -27,7 +27,7 @@ declare global {
       start: (profileId: string) => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number; name: string }>;
       openFile: () => Promise<string | null>;
     };
-    nexusCompanion: { info: () => Promise<{ url: string; hostId: string; credentialsPath: string | null; credentialsWarning: string | null; enrollmentToken?: string } | null> };
+    nexusCompanion: { openNetworkFile: () => Promise<string | null>; info: () => Promise<{ mode: "local" | "private" | "https"; networkWarning: string | null; url: string; hostId: string; credentialsPath: string | null; credentialsWarning: string | null; enrollmentToken?: string } | null> };
     nexusSessions: { list: () => Promise<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>> };
   }
 }
@@ -300,7 +300,7 @@ function App(): React.JSX.Element {
           ),
         ),
         companionInfo && !companionDismissed ? React.createElement("div", { style: styles.companionCard },
-          React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, LOOPBACK)"),
+          React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, " + (companionInfo.mode === "local" ? "LOOPBACK" : companionInfo.mode === "private" ? "PRIVATE NETWORK" : "HTTPS") + ")"),
           React.createElement("span", { style: styles.muted }, companionInfo.url+" · host "+companionInfo.hostId),
           companionInfo.enrollmentToken
             ? React.createElement(React.Fragment, null,
@@ -311,7 +311,9 @@ function App(): React.JSX.Element {
           companionInfo.credentialsPath
             ? React.createElement("span", { style: styles.muted }, "Saved (user-only): "+companionInfo.credentialsPath)
             : React.createElement("span", { style: styles.error }, companionInfo.credentialsWarning ?? "No credentials file written."),
+          companionInfo.networkWarning ? React.createElement("span", { style: styles.error }, companionInfo.networkWarning) : null,
           React.createElement("span", { style: styles.muted }, "Valid until the app exits; a new token is issued next launch."),
+          React.createElement("button", { onClick: () => { void window.nexusCompanion.openNetworkFile(); } }, "Edit network settings (restart to apply)"),
           React.createElement("button", { onClick: () => setCompanionDismissed(true) }, "Hide"),
         ) : null,
       ),

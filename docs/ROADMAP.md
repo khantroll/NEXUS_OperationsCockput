@@ -96,6 +96,20 @@ calendar estimates.
 - M2.11 panel controls: every panel (including SSH) now has Interrupt, Terminate and Close; Restart remains
   for profile panels only (an SSH panel is reconnected with its Connect button). Close stops a running session,
   releases the view and removes the panel, and also works on exited panels. Verified over the DevTools protocol.
+- M2.12 reachability modes (owner decision: all three must be possible). `companion-network.json` in the app's
+  userData folder selects: `local` (default, loopback only), `private` (plain HTTP bound to one private address
+  for a Tailscale/WireGuard/LAN interface; with no `bind` the machine's Tailscale 100.64.0.0/10 address is
+  auto-detected; peers outside private ranges are refused), or `https` (TLS using your `certFile`/`keyFile` and a
+  `publicHost` name, for exposure beyond a private network; any peer may connect but the token and per-source rate
+  limits still gate every request). Hardening from the security review: a global auth-attempt ceiling applied
+  before the expensive token hash (IPv6 sources grouped by /64), per-source connection caps, short handshake/header
+  timeouts, disallowed peers dropped at connect time, fixed error text. `private` mode refuses plain-LAN binds
+  (10.x/192.168.x/172.16-31.x) unless `"allowLan": true`, because the token would cross the LAN unencrypted;
+  WireGuard users on such addresses set that flag. Do not front `local`/`private` mode with a public tunnel or
+  reverse proxy (peers would look local/private); use `https` mode for public exposure. An invalid or
+  unstartable config falls back to `local` with a visible warning, so a typo can never widen exposure. Changes
+  apply on restart. Verified with unit tests (including a real TLS handshake) and by launching the real app in
+  each mode (auto-detected this machine's Tailscale address). Not verified: a client on another machine.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations

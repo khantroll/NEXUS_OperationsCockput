@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { basename, dirname, join } from "node:path";
 // Package self-imports (not "./x.js"): the desktop host loads these .ts sources directly at runtime.
 import { CompanionHttpServer, type CompanionOutputSource, type CompanionReadModel } from "@nexus/integration/companion-http";
+import { resolveBind, type CompanionNetworkConfig, type NetworkInterfaceLike } from "@nexus/integration/companion-network";
 import { CompanionPolicy } from "@nexus/integration/companion-policy";
 import { HostEnrollmentRegistry } from "@nexus/integration/host-enrollment";
 
@@ -14,9 +16,14 @@ export interface CompanionServiceOptions {
   /** Where to write the user-only credentials file. Omit to skip writing one. */
   credentialsPath?: string;
   port?: number;
+  /** Reachability (default: local, loopback only). See companion-network.ts. */
+  network?: CompanionNetworkConfig;
+  /** Test seam: defaults to the machine's real interfaces. */
+  interfaces?: Record<string, readonly NetworkInterfaceLike[] | undefined>;
 }
 
 export interface CompanionServiceInfo {
+  mode: "local" | "private" | "https";
   url: string;
   hostId: string;
   /** Raw enrollment token. Handed to the caller once; only a salted hash is kept in memory. */
@@ -36,15 +43,25 @@ export interface CompanionService {
  * in memory, so the token is valid for this run only and is regenerated on every start.
  */
 export async function startCompanionService(options: CompanionServiceOptions): Promise<CompanionService> {
+  const network: CompanionNetworkConfig = options.network ?? { mode: "local" };
+  const resolved = resolveBind(options.port === undefined ? network : { ...network, port: options.port }, options.interfaces ?? networkInterfaces());
+  const tls = network.mode === "https"
+    ? { cert: readFileSync(network.certFile), key: readFileSync(network.keyFile) }
+    : undefined;
   const enrollment = new HostEnrollmentRegistry();
   const issued = enrollment.enroll(options.hostId, options.displayName, new Date().toISOString());
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment), {
     readModel: options.readModel,
     ...(options.outputSource === undefined ? {} : { outputSource: options.outputSource }),
-    ...(options.port === undefined ? {} : { port: options.port }),
+    mode: resolved.mode,
+    bind: resolved.bind,
+    port: resolved.port,
+    ...(tls === undefined ? {} : { tls }),
   });
   const address = await server.start();
-  const url = `http://${address.host}:${address.port}`;
+  const url = network.mode === "https"
+    ? `https://${network.publicHost}:${address.port}`
+    : `http://${address.host.includes(":") ? `[${address.host}]` : address.host}:${address.port}`;
   let credentialsPath: string | null = null;
   let credentialsWarning: string | null = null;
   if (options.credentialsPath) {
@@ -66,7 +83,7 @@ export async function startCompanionService(options: CompanionServiceOptions): P
     }
   }
   return {
-    info: { url, hostId: issued.host.hostId, enrollmentToken: issued.enrollmentToken, credentialsPath, credentialsWarning },
+    info: { mode: resolved.mode, url, hostId: issued.host.hostId, enrollmentToken: issued.enrollmentToken, credentialsPath, credentialsWarning },
     stop: () => server.stop(),
   };
 }
