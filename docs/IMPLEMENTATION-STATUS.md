@@ -94,6 +94,8 @@ runtime behavior is already implemented.
   `linux-tmux` CI job is added but has not yet run.
 - M2.8 adds the `attach-read` output endpoint (see ROADMAP), tested over HTTP (capability separation,
   cross-host denial, bounds, disabled-by-default) and verified against a live desktop session.
+- M2.9 adds the SSH profile resolver (unit-tested; not wired to UI). The `linux-tmux` CI job passed on
+  ubuntu-latest for commit `1ad35fe`, which verifies `TmuxBackend` on native Linux.
 
 ## Evidence
 

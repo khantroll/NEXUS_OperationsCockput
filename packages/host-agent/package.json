@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./supervisor": "./src/supervisor.ts",
-    "./tmux": "./src/tmux.ts"
+    "./tmux": "./src/tmux.ts",
+    "./ssh-profile": "./src/ssh-profile.ts"
   },
   "dependencies": {
     "@nexus/contracts": "0.1.0",

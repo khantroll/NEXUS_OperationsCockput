@@ -75,6 +75,12 @@ calendar estimates.
   authorization, so this does not by itself close the M2 exit criterion for multi-user use. `truncated`
   reports only the HTTP-layer cut, not output the supervisor already dropped from its 64 KiB buffer.
   Still loopback-only, polling (no streaming), Windows desktop sessions only; tmux sessions are not exposed.
+- M2.9 SSH profiles: `resolveSshProfile` (packages/host-agent/src/ssh-profile.ts) validates non-secret SSH
+  profiles (host or ~/.ssh/config alias, user, port, key-file path, optional remote tmux session) and resolves
+  them to an argv-only `ssh` invocation: host-key checking is never disabled, nothing may start with `-`, and
+  authentication stays with ssh (agent, key, or prompt in the PTY). Windows uses the OS OpenSSH by absolute
+  path. Not yet wired to a profiles file, IPC or UI; the UI also has no interactive terminal input yet, which
+  an SSH session needs (see next steps).
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations

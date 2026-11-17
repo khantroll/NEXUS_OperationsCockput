@@ -32,6 +32,15 @@ Prefer isolation and state correctness over seamless-looking animations; publish
 - Remote and web providers are adapter-oriented. Unsupported embedding falls back to an
   external or supported browser integration; no provider security control is bypassed.
 
+## Accepted M2 constraints (owner decisions, 2026-11-17)
+
+- **Single-owner trust model.** The holder of the per-run companion enrollment token is fully trusted: one
+  token may request any companion capability, and grants are per host rather than per client or per session.
+  Ease of operation is preferred over multi-user authorization. Per-client/per-session grants are therefore
+  deliberately not planned. Revisit only if the companion is ever shared with another person or exposed beyond
+  loopback; the M2 "authorized terminal" exit criterion is read as "authorized by the owner's token".
+- Safety limits that do not add operating friction stay: loopback-only binding, no generic exec route,
+  user-only credentials file, bounded output, and no secrets in logs.
 ## Experiment log template
 - Experiment and commit:
 - OS / versions:
