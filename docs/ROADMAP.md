@@ -110,6 +110,7 @@ calendar estimates.
   unstartable config falls back to `local` with a visible warning, so a typo can never widen exposure. Changes
   apply on restart. Verified with unit tests (including a real TLS handshake) and by launching the real app in
   each mode (auto-detected this machine's Tailscale address). Not verified: a client on another machine.
+- M2.13 provider probe: ChatGPT, Claude and Gemini all load and render their sign-in UI in a top-level Electron view and all refuse iframes; see the Provider probe in FEASIBILITY-MATRIX.md. Sign-in inside the view is untested.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations
