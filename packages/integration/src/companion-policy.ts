@@ -31,7 +31,13 @@ export type CompanionAuthorization =
  */
 export class CompanionPolicy {
   private readonly grants = new Map<string, CompanionGrant>();
-  public constructor(private readonly enrollment: HostEnrollmentRegistry, private readonly ttlMs = 5 * 60_000) {
+  private readonly enrollment: HostEnrollmentRegistry;
+  private readonly ttlMs: number;
+
+  // No parameter properties: the desktop host runs this file under Node's strip-only TypeScript mode.
+  public constructor(enrollment: HostEnrollmentRegistry, ttlMs = 5 * 60_000) {
+    this.enrollment = enrollment;
+    this.ttlMs = ttlMs;
     if (!Number.isInteger(ttlMs) || ttlMs < 1_000) throw new RangeError("companion grant TTL is too short");
   }
 

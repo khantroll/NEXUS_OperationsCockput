@@ -40,8 +40,16 @@ calendar estimates.
 - M2.5 persisted read model: `createMetadataReadModel` adapts the SQLite session metadata to the
   companion read model, scoped per host and limited to id/kind/process/transport (no PID, epoch,
   exit code, or recovery detail). It serves persisted metadata only; live supervisor push remains
-  unfinished. The desktop app does not yet start the companion server: that needs a
-  decision on how an enrollment token is delivered to the user without logging it.
+  unfinished.
+- M2.6 desktop companion: the desktop app starts the loopback-only read-only companion on launch
+  (not in smoke runs) with a fresh single-user enrollment per run. The token is shown once in the
+  session shelf (copy button) and written to `companion-credentials.json` in the app's userData
+  directory; any existing file is replaced (links refused), the new file is created exclusively and empty,
+  restricted to the current user by SID with `icacls` (0600 elsewhere), the ACL is read back, and only
+  then is the token written; if confirmation fails nothing is written. Residual risk: a process that
+  opened the empty file before restriction could keep its handle. The token is in-memory and
+  valid for that run only; it is never logged. Still loopback only: no LAN access, TLS, durable
+  tokens, or live supervisor push.
 - Authenticated, private-network-only web client and API; host enrollment and revocation.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.

@@ -5,6 +5,8 @@ import { PtySupervisor, type AttachmentMode, type PtyAttachment } from "@nexus/h
 import { MetadataStore } from "@nexus/storage/metadata";
 import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type WorkspaceRecord } from "@nexus/contracts";
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
+import { startCompanionService, type CompanionService } from "@nexus/integration/companion-service";
+import { createMetadataReadModel } from "@nexus/integration/metadata-read-model";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -12,6 +14,8 @@ const rendererPath = path.resolve(currentDirectory, "../renderer/index.html");
 const rendererUrl = pathToFileURL(rendererPath).toString();
 let hostSupervisor: PtySupervisor;
 let metadataStore: MetadataStore;
+let companion: CompanionService | null = null;
+let companionTokenRevealed = false;
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
 const writerBySession = new Map<string, string>();
@@ -79,6 +83,18 @@ function detachSessionAttachments(sessionId: string): void {
       if (writerBySession.get(sessionId) === attachmentId) writerBySession.delete(sessionId);
     }
   }
+}
+
+/** The raw token is revealed to the renderer once per run; the user-only file remains the durable copy. */
+function registerCompanionIpc(): void {
+  ipcMain.handle("nexus:companion:info", (event) => {
+    assertRenderer(event);
+    if (!companion) return null;
+    const { url, hostId, enrollmentToken, credentialsPath, credentialsWarning } = companion.info;
+    const reveal = !companionTokenRevealed;
+    companionTokenRevealed = true;
+    return { url, hostId, credentialsPath, credentialsWarning, ...(reveal ? { enrollmentToken } : {}) };
+  });
 }
 
 function registerHostIpc(): void {
@@ -353,6 +369,7 @@ app.whenReady().then(async () => {
     hostBootEpoch,
   });
   registerHostIpc();
+  registerCompanionIpc();
   const recoveryMode = process.env.NEXUS_DESKTOP_RECOVERY_SEED === "1"
     ? "seed"
     : process.env.NEXUS_DESKTOP_RECOVERY_RELAUNCH === "1" ? "relaunch" : null;
@@ -367,6 +384,19 @@ app.whenReady().then(async () => {
       metadataStore.close();
       app.exit(1);
       return;
+    }
+  }
+  // Smoke runs must not overwrite the user's real credentials file or hold a listener.
+  if (process.env.NEXUS_DESKTOP_SMOKE !== "1") {
+    try {
+      companion = await startCompanionService({
+        hostId: "xenos-windows",
+        displayName: "Xenos Windows",
+        readModel: createMetadataReadModel(metadataStore),
+        credentialsPath: path.join(app.getPath("userData"), "companion-credentials.json"),
+      });
+    } catch (error) {
+      console.error("NEXUS companion failed to start", error);
     }
   }
   const window = await createWindow();
@@ -390,5 +420,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  const stopping = companion;
+  companion = null;
+  void stopping?.stop().catch(() => undefined);
   metadataStore?.close();
 });

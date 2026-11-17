@@ -82,15 +82,19 @@ runtime behavior is already implemented.
 - M2.4 adds short-lived grant validation and a read-only session metadata endpoint backed by an
   injected model; it does not expose terminal output, input, or generic execution.
 - M2.5 adds `createMetadataReadModel`, backing that endpoint with persisted SQLite session metadata
-  (host-scoped, four state fields only; tested end to end over HTTP). Desktop does not start the
-  companion server yet.
+  (host-scoped, four state fields only; tested end to end over HTTP).
+- M2.6 starts that server from the desktop app (`startCompanionService`), shows the per-run
+  enrollment token once in the UI, and writes it to a user-only file. Verified by a real (non-smoke)
+  launch: file ACL limited to the current user, token authorized a grant, endpoint returned sessions.
+  Integration sources loaded by the desktop host must avoid TS parameter properties and relative
+  `.js` value imports (Node strip-only mode); use package self-imports.
 
 ## Evidence
 
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (49 passing tests; serialized to avoid concurrent ConPTY cleanup races)
+- `npm test` (53 passing tests; serialized to avoid concurrent ConPTY cleanup races)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.
@@ -114,6 +118,10 @@ Validated locally on Windows with Node 24.21.0:
   acceptance.
 
 ## Remaining limitation
+
+- Known issue: `smoke:reload` fails intermittently here ("initial replay was empty"), including on a clean checkout of
+   `1ab785e` (0/4 runs) on this 2-core Celeron host; CI on faster hardware passed earlier. Looks like a
+   timing issue in the smoke harness, not yet root-caused.
 
 1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
    suppression or replacement is validated.

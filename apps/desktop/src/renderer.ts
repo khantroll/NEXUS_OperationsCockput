@@ -20,6 +20,7 @@ declare global {
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null>; list: (workspaceId: string) => Promise<PanelRecord[]>; export: (workspaceId: string) => Promise<string>; import: (serialized: string) => Promise<unknown> };
     nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void> };
+    nexusCompanion: { info: () => Promise<{ url: string; hostId: string; credentialsPath: string | null; credentialsWarning: string | null; enrollmentToken?: string } | null> };
     nexusSessions: { list: () => Promise<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>> };
   }
 }
@@ -59,6 +60,8 @@ function App(): React.JSX.Element {
     createdAt: "2026-11-15T00:00:00.000Z",
     lastOpenedAt: "2026-11-15T00:00:00.000Z",
   });
+  const [companionInfo, setCompanionInfo] = useState<Awaited<ReturnType<Window["nexusCompanion"]["info"]>>>(null);
+  const [companionDismissed, setCompanionDismissed] = useState(false);
   const [sessions, setSessions] = useState<Array<{ sessionId: string; kind: string; transport: string; process: string; recovery: string; pid?: number }>>([]);
   const [lifecycleErrors, setLifecycleErrors] = useState<Record<string, string>>({});
   const [hostSession, setHostSession] = useState<{ sessionId: string; pid: number; status: string; outputBytes: number } | null>(null);
@@ -151,6 +154,9 @@ function App(): React.JSX.Element {
     }));
   };
   useEffect(() => {
+    void window.nexusCompanion.info().then(setCompanionInfo).catch(() => setCompanionInfo(null));
+  }, []);
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!event.ctrlKey || !event.shiftKey || event.altKey) return;
       if (event.key === "p") { event.preventDefault(); dispatch({ op: "park", panelId: panel.panelId }); }
@@ -239,6 +245,21 @@ function App(): React.JSX.Element {
           React.createElement("button", { onClick: () => { void launchProfile({ profileId: "claude-code", name: "Claude Code", executable: "claude", args: ["--version"] }); } }, "Launch Claude profile"),
           React.createElement("button", { onClick: () => { void launchProfile({ profileId: "codex-cli", name: "Codex CLI", executable: "codex", args: ["--version"] }); } }, "Launch Codex profile"),
         ),
+        companionInfo && !companionDismissed ? React.createElement("div", { style: styles.companionCard },
+          React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, LOOPBACK)"),
+          React.createElement("span", { style: styles.muted }, companionInfo.url+" · host "+companionInfo.hostId),
+          companionInfo.enrollmentToken
+            ? React.createElement(React.Fragment, null,
+              React.createElement("div", { style: styles.muted }, "Enrollment token (shown once this run):"),
+              React.createElement("code", { style: styles.token }, companionInfo.enrollmentToken),
+              React.createElement("button", { onClick: () => { void navigator.clipboard.writeText(companionInfo.enrollmentToken ?? ""); } }, "Copy token"))
+            : React.createElement("span", { style: styles.muted }, "Token already shown this run."),
+          companionInfo.credentialsPath
+            ? React.createElement("span", { style: styles.muted }, "Saved (user-only): "+companionInfo.credentialsPath)
+            : React.createElement("span", { style: styles.error }, companionInfo.credentialsWarning ?? "No credentials file written."),
+          React.createElement("span", { style: styles.muted }, "Valid until the app exits; a new token is issued next launch."),
+          React.createElement("button", { onClick: () => setCompanionDismissed(true) }, "Hide"),
+        ) : null,
       ),
       React.createElement("section", { style: styles.canvas },
         React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / "+workspace.name.toUpperCase()),
@@ -312,6 +333,8 @@ const styles: Record<string, React.CSSProperties> = {
   muted: { color: "#8491b0", fontSize: 12 },
   running: { color: "#61d6a2", fontSize: 12 },
   error: { color: "#ff9b9b", fontSize: 12 },
+  companionCard: { display: "grid", gap: 8, marginTop: 16, padding: 13, borderRadius: 10, background: "#17213a", border: "1px solid #334266", wordBreak: "break-all" },
+  token: { padding: 8, borderRadius: 6, background: "#080d18", color: "#a6f3c5", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 12 },
   canvas: { background: "#0e1527", border: "1px solid #202b48", borderRadius: 14, padding: 22 },
   panel: { maxWidth: 780, background: "#11182b", border: "1px solid #2b385b", borderRadius: 12, overflow: "hidden", boxShadow: "0 14px 50px #05081480" },
   panelHeader: { display: "flex", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid #202b48" },

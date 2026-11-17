@@ -33,7 +33,13 @@ export class CompanionHttpServer {
   private address: CompanionHttpAddress | null = null;
   private readonly authAttempts = new Map<string, { windowStartedAt: number; count: number }>();
 
-  public constructor(private readonly policy: CompanionPolicy, private readonly options: CompanionHttpOptions = {}) {
+  private readonly policy: CompanionPolicy;
+  private readonly options: CompanionHttpOptions;
+
+  // No parameter properties: the desktop host runs this file under Node's strip-only TypeScript mode.
+  public constructor(policy: CompanionPolicy, options: CompanionHttpOptions = {}) {
+    this.policy = policy;
+    this.options = options;
     this.server = createServer((request, response) => { void this.handle(request, response); });
   }
 
@@ -58,8 +64,8 @@ export class CompanionHttpServer {
 
   public async stop(): Promise<void> {
     if (!this.address) return;
-    await new Promise<void>((resolve, reject) => this.server.close((error) => error ? reject(error) : resolve()));
     this.address = null;
+    await new Promise<void>((resolve, reject) => this.server.close((error) => error ? reject(error) : resolve()));
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {

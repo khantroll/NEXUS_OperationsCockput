@@ -33,6 +33,10 @@ const sessions = {
   list: () => ipcRenderer.invoke("nexus:session:list"),
 };
 
+const companion = {
+  info: () => ipcRenderer.invoke("nexus:companion:info"),
+};
+
 contextBridge.exposeInMainWorld("nexusShell", {
   version: "0.1.0-lab",
   capabilities: ["panel-lifecycle-local"],
@@ -41,3 +45,4 @@ contextBridge.exposeInMainWorld("nexusHost", host);
 contextBridge.exposeInMainWorld("nexusLayout", layout);
 contextBridge.exposeInMainWorld("nexusWorkspace", workspace);
 contextBridge.exposeInMainWorld("nexusSessions", sessions);
+contextBridge.exposeInMainWorld("nexusCompanion", companion);

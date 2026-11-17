@@ -12,6 +12,7 @@
     "./host-enrollment": "./src/host-enrollment.ts",
     "./companion-policy": "./src/companion-policy.ts",
     "./companion-http": "./src/companion-http.ts",
-    "./metadata-read-model": "./src/metadata-read-model.ts"
+    "./metadata-read-model": "./src/metadata-read-model.ts",
+    "./companion-service": "./src/companion-service.ts"
   }
 }
