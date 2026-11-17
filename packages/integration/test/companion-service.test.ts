@@ -68,6 +68,10 @@ test("aclIsOnly accepts a single matching ACE and fails closed otherwise", () =>
   assert.equal(aclIsOnly(f + " " + me + ":(F)\n      Everyone:(R)" + tail, f, me), false);
   assert.equal(aclIsOnly(f + " Everyone:(R)" + tail, f, me), false);
   assert.equal(aclIsOnly("garbage", f, me), false);
+  // icacls can print the long path form while we hold the 8.3 short form (seen on the GitHub Windows runner).
+  const longForm = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\nexus-svc-x\\c.json";
+  assert.equal(aclIsOnly(longForm + " " + me + ":(F)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), true);
+  assert.equal(aclIsOnly(longForm + " " + me + ":(F)\n      Everyone:(R)" + tail, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\nexus-svc-x\\c.json", me), false);
 });
 
 test("an existing credentials file with broad permissions is replaced, not reused", { skip: process.platform !== "win32" }, async () => {

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, lstatSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 // Package self-imports (not "./x.js"): the desktop host loads these .ts sources directly at runtime.
 import { CompanionHttpServer, type CompanionOutputSource, type CompanionReadModel } from "@nexus/integration/companion-http";
 import { CompanionPolicy } from "@nexus/integration/companion-policy";
@@ -100,9 +100,13 @@ function writeUserOnlyFile(file: string, contents: string): void {
 /** True only if the icacls listing contains exactly one ACE and it belongs to `account`. Fails closed. */
 export function aclIsOnly(icaclsOutput: string, file: string, account: string): boolean {
   const listing = icaclsOutput.split("Successfully processed")[0] ?? "";
-  const at = listing.toLowerCase().indexOf(file.toLowerCase());
-  if (at < 0) return false;
-  const aces = listing.slice(at + file.length).trim();
+  // icacls may print the long form of the path (e.g. RUNNER~1 -> runneradmin), so locate the file by
+  // its final path component on the first line rather than by the full path we passed in.
+  const baseName = basename(file.replaceAll("\\", "/")).toLowerCase();
+  const firstLine = listing.split(/\r?\n/)[0] ?? "";
+  const at = firstLine.toLowerCase().lastIndexOf(baseName);
+  if (baseName.length === 0 || at < 0) return false;
+  const aces = (firstLine.slice(at + baseName.length) + "\n" + listing.split(/\r?\n/).slice(1).join("\n")).trim();
   return aces.toLowerCase().startsWith(`${account.toLowerCase()}:(`) && (aces.match(/:\(/g) ?? []).length === 1;
 }
 
