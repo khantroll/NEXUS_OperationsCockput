@@ -81,13 +81,16 @@ runtime behavior is already implemented.
   authenticated WebSocket.
 - M2.4 adds short-lived grant validation and a read-only session metadata endpoint backed by an
   injected model; it does not expose terminal output, input, or generic execution.
+- M2.5 adds `createMetadataReadModel`, backing that endpoint with persisted SQLite session metadata
+  (host-scoped, four state fields only; tested end to end over HTTP). Desktop does not start the
+  companion server yet.
 
 ## Evidence
 
 Validated locally on Windows with Node 24.21.0:
 
 - `npm run typecheck`
-- `npm test` (40 passing tests; serialized to avoid concurrent ConPTY cleanup races)
+- `npm test` (49 passing tests; serialized to avoid concurrent ConPTY cleanup races)
 - Host-agent focused runtime demonstration: 2 independent ConPTY sessions, bounded replay,
   detach/reattach, and exit observation passed; cleanup diagnostics remain documented in
   `docs/PTY-SPIKE.md`.

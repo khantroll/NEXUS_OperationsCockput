@@ -11,6 +11,7 @@
     "./provider": "./src/provider.ts",
     "./host-enrollment": "./src/host-enrollment.ts",
     "./companion-policy": "./src/companion-policy.ts",
-    "./companion-http": "./src/companion-http.ts"
+    "./companion-http": "./src/companion-http.ts",
+    "./metadata-read-model": "./src/metadata-read-model.ts"
   }
 }

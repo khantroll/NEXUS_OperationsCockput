@@ -36,7 +36,12 @@ calendar estimates.
   remain unfinished.
 - M2.4 read-only companion resource: short-lived grants can retrieve injected session metadata
   through a loopback endpoint. The endpoint exposes no terminal output, input, write lease, or
-  generic execution; connecting it to the live supervisor/control plane remains unfinished.
+  generic execution.
+- M2.5 persisted read model: `createMetadataReadModel` adapts the SQLite session metadata to the
+  companion read model, scoped per host and limited to id/kind/process/transport (no PID, epoch,
+  exit code, or recovery detail). It serves persisted metadata only; live supervisor push remains
+  unfinished. The desktop app does not yet start the companion server: that needs a
+  decision on how an enrollment token is delivered to the user without logging it.
 - Authenticated, private-network-only web client and API; host enrollment and revocation.
 - Linux host agent, tmux-backed sessions, SSH profile management, input leases.
 - Guacamole integration spike for VNC/RDP; remote status, connection errors and observability.
