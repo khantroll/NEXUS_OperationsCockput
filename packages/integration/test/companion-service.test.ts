@@ -15,7 +15,7 @@ test("companion service issues a usable token and a user-only credentials file",
   const file = path.join(dir, "nested", "companion.json");
   const service = await startCompanionService({ hostId: "host-1", displayName: "Host One", readModel, credentialsPath: file });
   try {
-    assert.equal(service.info.credentialsPath, file);
+    assert.equal(service.info.credentialsPath, file, String(service.info.credentialsWarning));
     assert.equal(service.info.credentialsWarning, null);
     assert.match(service.info.url, /^http:\/\/(127\.0\.0\.1|\[?::1\]?):\d+$/);
     const saved = JSON.parse(readFileSync(file, "utf8")) as { enrollmentToken: string; url: string; hostId: string };
@@ -81,7 +81,7 @@ test("an existing credentials file with broad permissions is replaced, not reuse
   execFileSync(icacls, [file, "/grant", "Everyone:R"], { stdio: "ignore" });
   const service = await startCompanionService({ hostId: "host-1", displayName: "Host One", readModel, credentialsPath: file });
   try {
-    assert.equal(service.info.credentialsPath, file);
+    assert.equal(service.info.credentialsPath, file, String(service.info.credentialsWarning));
     const acl = execFileSync(icacls, [file], { encoding: "utf8" });
     assert.doesNotMatch(acl, /Everyone/i);
     assert.equal((acl.match(/:\(/g) ?? []).length, 1);

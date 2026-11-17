@@ -87,8 +87,10 @@ function writeUserOnlyFile(file: string, contents: string): void {
   if (process.platform === "win32") {
     const [account, sid] = currentWindowsUser();
     execFileSync(system32("icacls.exe"), [file, "/inheritance:r", "/grant:r", `*${sid}:F`], { stdio: "ignore" });
-    if (!aclIsOnly(execFileSync(system32("icacls.exe"), [file], { encoding: "utf8" }), file, account)) {
-      throw new Error("could not confirm user-only permissions");
+    const listing = execFileSync(system32("icacls.exe"), [file], { encoding: "utf8" });
+    if (!aclIsOnly(listing, file, account)) {
+      // The listing is ACL metadata only (no secrets); it is included so a failure is diagnosable.
+      throw new Error("could not confirm user-only permissions (expected " + JSON.stringify(account) + ", icacls said " + JSON.stringify(listing.slice(0, 400)) + ")");
     }
   } else {
     chmodSync(file, 0o600);
