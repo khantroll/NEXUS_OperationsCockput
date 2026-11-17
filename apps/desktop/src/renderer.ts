@@ -178,6 +178,14 @@ function App(): React.JSX.Element {
       } catch { /* preserve the visible failure and session shelf state */ }
     }
   };
+  /** Close = stop the session if it is still running, release the view, and remove the panel (works for exited panels too). */
+  const closeProfilePanel = async (entry: ProfilePanel): Promise<void> => {
+    await window.nexusHost.detach(entry.attachmentId).catch(() => undefined);
+    discardTerminalBuffer(entry.attachmentId);
+    await window.nexusHost.terminate(entry.panel.sessionId, `close:${entry.panel.sessionId}`).catch(() => undefined);
+    setProfilePanels((current) => current.filter((candidate) => candidate.panel.panelId !== entry.panel.panelId));
+    setSessions((current) => current.map((candidate) => candidate.sessionId === entry.panel.sessionId ? { ...candidate, process: "exited", transport: "disconnected" } : candidate));
+  };
   const dispatchProfile = (panelId: string, payload: PanelCommand): void => {
     setProfilePanels((current) => current.map((entry) => {
       if (entry.panel.panelId !== panelId) return entry;
@@ -342,11 +350,10 @@ function App(): React.JSX.Element {
               React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),
               React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "snapBack", panelId: entry.panel.panelId }) }, "SnapBack"),
               React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "setHome", panelId: entry.panel.panelId, anchor: { ...entry.panel.homeAnchor, layoutRevision: entry.panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
-              entry.profile ? React.createElement(React.Fragment, null,
-                React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "interrupt"); } }, "Interrupt"),
-                React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "restart"); } }, "Restart"),
-                React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "terminate"); } }, "Terminate"),
-              ) : null,
+              React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "interrupt"); } }, "Interrupt"),
+              entry.profile ? React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "restart"); } }, "Restart") : null,
+              React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "terminate"); } }, "Terminate"),
+              React.createElement("button", { onClick: () => { void closeProfilePanel(entry); } }, "Close"),
               lifecycleErrors[entry.panel.panelId] ? React.createElement("span", { style: styles.error }, lifecycleErrors[entry.panel.panelId]) : null,
             ),
           )),

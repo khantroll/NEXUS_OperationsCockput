@@ -92,8 +92,10 @@ calendar estimates.
   Review fixes: a page reload releases its write attachments (so recovered terminals stay writable), output
   arriving before a terminal mounts is buffered and flushed in order, resize is keyed to the caller's own
   writable attachment, pastes are sent through one ordered queue in surrogate-safe chunks, and the profiles
-  file is capped at 256 KB. SSH panels have no Interrupt/Restart/Terminate buttons and exited panels cannot
-  yet be closed (type `exit` or Ctrl+D to end a session).
+  file is capped at 256 KB.
+- M2.11 panel controls: every panel (including SSH) now has Interrupt, Terminate and Close; Restart remains
+  for profile panels only (an SSH panel is reconnected with its Connect button). Close stops a running session,
+  releases the view and removes the panel, and also works on exited panels. Verified over the DevTools protocol.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations
