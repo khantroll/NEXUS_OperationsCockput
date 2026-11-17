@@ -92,6 +92,8 @@ runtime behavior is already implemented.
 - M2.7 adds `TmuxBackend` for Linux/tmux-hosted sessions (see ROADMAP). Unit tests use a fake runner; one
   integration tests drive real tmux (skipped when tmux is absent; run locally against tmux 3.6a). The
   `linux-tmux` CI job is added but has not yet run.
+- M2.8 adds the `attach-read` output endpoint (see ROADMAP), tested over HTTP (capability separation,
+  cross-host denial, bounds, disabled-by-default) and verified against a live desktop session.
 
 ## Evidence
 

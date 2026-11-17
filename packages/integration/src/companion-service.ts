@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, lstatSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 // Package self-imports (not "./x.js"): the desktop host loads these .ts sources directly at runtime.
-import { CompanionHttpServer, type CompanionReadModel } from "@nexus/integration/companion-http";
+import { CompanionHttpServer, type CompanionOutputSource, type CompanionReadModel } from "@nexus/integration/companion-http";
 import { CompanionPolicy } from "@nexus/integration/companion-policy";
 import { HostEnrollmentRegistry } from "@nexus/integration/host-enrollment";
 
@@ -10,6 +10,7 @@ export interface CompanionServiceOptions {
   hostId: string;
   displayName: string;
   readModel: CompanionReadModel;
+  outputSource?: CompanionOutputSource;
   /** Where to write the user-only credentials file. Omit to skip writing one. */
   credentialsPath?: string;
   port?: number;
@@ -39,6 +40,7 @@ export async function startCompanionService(options: CompanionServiceOptions): P
   const issued = enrollment.enroll(options.hostId, options.displayName, new Date().toISOString());
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment), {
     readModel: options.readModel,
+    ...(options.outputSource === undefined ? {} : { outputSource: options.outputSource }),
     ...(options.port === undefined ? {} : { port: options.port }),
   });
   const address = await server.start();
@@ -55,6 +57,7 @@ export async function startCompanionService(options: CompanionServiceOptions): P
         howTo: [
           `POST ${url}/v1/companion/authorize with JSON {hostId, clientId, enrollmentToken, capability: "read-workspace"} to get a short-lived grant.`,
           `GET ${url}/v1/companion/hosts/${issued.host.hostId}/sessions with headers "Authorization: Bearer <grantId>" and "X-Nexus-Client-Id: <clientId>".`,
+          `For terminal output, authorize with capability "attach-read" instead, then GET ${url}/v1/companion/hosts/${issued.host.hostId}/sessions/<sessionId>/output (read-only, last 64 KiB; output may contain sensitive text).`,
         ],
       }, null, 2) + "\n");
       credentialsPath = options.credentialsPath;

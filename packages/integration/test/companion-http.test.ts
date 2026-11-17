@@ -103,3 +103,89 @@ test("companion HTTP rate-limits repeated invalid authentication attempts", asyn
     await server.stop();
   }
 });
+
+test("attach-read grants read bounded terminal output; other capabilities and hosts cannot", async () => {
+  const enrollment = new HostEnrollmentRegistry();
+  const one = enrollment.enroll("host-1", "Host One", "2026-11-17T00:00:00.000Z");
+  enrollment.enroll("host-2", "Host Two", "2026-11-17T00:00:00.000Z");
+  const outputs = new Map([["s1", "hello\r\n"], ["big", "x".repeat(100_000)]]);
+  const server = new CompanionHttpServer(new CompanionPolicy(enrollment, 60_000), {
+    readModel: { listSessions: () => [] },
+    outputSource: { readOutput: (hostId, sessionId) => hostId === "host-1" ? outputs.get(sessionId) ?? null : null },
+  });
+  const address = await server.start();
+  const base = `http://${address.host}:${address.port}`;
+  const grantFor = async (capability: string): Promise<string> => {
+    const res = await fetch(`${base}/v1/companion/authorize`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hostId: "host-1", clientId: "c1", enrollmentToken: one.enrollmentToken, capability }),
+    });
+    return ((await res.json()) as { grant: { grantId: string } }).grant.grantId;
+  };
+  const get = (url: string, grant: string): Promise<Response> => fetch(`${base}${url}`, { headers: { authorization: `Bearer ${grant}`, "x-nexus-client-id": "c1" } });
+  try {
+    const attach = await grantFor("attach-read");
+    const ok = await get("/v1/companion/hosts/host-1/sessions/s1/output", attach);
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { sessionId: "s1", truncated: false, output: "hello\r\n" });
+    const big = await (await get("/v1/companion/hosts/host-1/sessions/big/output", attach)).json() as { truncated: boolean; output: string };
+    assert.equal(big.truncated, true);
+    assert.equal(big.output.length, 64 * 1024);
+    assert.equal((await get("/v1/companion/hosts/host-1/sessions/nope/output", attach)).status, 404);
+    assert.equal((await get("/v1/companion/hosts/host-1/sessions/bad%20id/output", attach)).status, 400);
+    // A read-workspace grant is not enough to read terminal output.
+    assert.equal((await get("/v1/companion/hosts/host-1/sessions/s1/output", await grantFor("read-workspace"))).status, 401);
+    // A host-1 grant cannot read host-2, and unknown/absent credentials fail.
+    assert.equal((await get("/v1/companion/hosts/host-2/sessions/s1/output", attach)).status, 401);
+    assert.equal((await get("/v1/companion/hosts/host-1/sessions/s1/output", "forged")).status, 401);
+    assert.equal((await fetch(`${base}/v1/companion/hosts/host-1/sessions/s1/output`)).status, 401);
+    // The attach-read grant cannot list sessions (different capability) and there is no write route.
+    assert.equal((await get("/v1/companion/hosts/host-1/sessions", attach)).status, 401);
+    const post = await fetch(`${base}/v1/companion/hosts/host-1/sessions/s1/output`, { method: "POST", headers: { authorization: `Bearer ${attach}`, "x-nexus-client-id": "c1" }, body: "rm -rf /" });
+    assert.equal(post.status, 404);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("terminal output endpoint is disabled unless an output source is configured", async () => {
+  const enrollment = new HostEnrollmentRegistry();
+  const issued = enrollment.enroll("host-1", "Host One", "2026-11-17T00:00:00.000Z");
+  const server = new CompanionHttpServer(new CompanionPolicy(enrollment, 60_000));
+  const address = await server.start();
+  try {
+    const auth = await fetch(`http://${address.host}:${address.port}/v1/companion/authorize`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hostId: "host-1", clientId: "c1", enrollmentToken: issued.enrollmentToken, capability: "attach-read" }),
+    });
+    const { grant } = await auth.json() as { grant: { grantId: string } };
+    const res = await fetch(`http://${address.host}:${address.port}/v1/companion/hosts/host-1/sessions/s1/output`, { headers: { authorization: `Bearer ${grant.grantId}`, "x-nexus-client-id": "c1" } });
+    assert.equal(res.status, 403);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("oversized multi-byte output is cut on a character boundary", async () => {
+  const enrollment = new HostEnrollmentRegistry();
+  const issued = enrollment.enroll("host-1", "Host One", "2026-11-17T00:00:00.000Z");
+  const text = "é".repeat(50_000); // 100,000 bytes of 2-byte characters
+  const server = new CompanionHttpServer(new CompanionPolicy(enrollment, 60_000), { outputSource: { readOutput: () => text } });
+  const address = await server.start();
+  const base = `http://${address.host}:${address.port}`;
+  try {
+    const auth = await fetch(`${base}/v1/companion/authorize`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hostId: "host-1", clientId: "c1", enrollmentToken: issued.enrollmentToken, capability: "attach-read" }),
+    });
+    const { grant } = await auth.json() as { grant: { grantId: string } };
+    const res = await fetch(`${base}/v1/companion/hosts/host-1/sessions/s1/output`, { headers: { authorization: `Bearer ${grant.grantId}`, "x-nexus-client-id": "c1" } });
+    const body = await res.json() as { truncated: boolean; output: string };
+    assert.equal(body.truncated, true);
+    assert.equal(body.output.includes("�"), false);
+    assert.ok(Buffer.byteLength(body.output, "utf8") <= 64 * 1024);
+    assert.match(body.output, /^é+$/);
+  } finally {
+    await server.stop();
+  }
+});

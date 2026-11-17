@@ -9,7 +9,17 @@ export interface CompanionHttpOptions {
   host?: "127.0.0.1" | "::1";
   port?: number;
   readModel?: CompanionReadModel;
+  /** Read-only terminal output for `attach-read` grants. Absent means the output endpoint is disabled. */
+  outputSource?: CompanionOutputSource;
 }
+
+/** Supplies bounded, read-only terminal output; returns null for an unknown session or host. */
+export interface CompanionOutputSource {
+  readOutput(hostId: string, sessionId: string, maxBytes: number): string | null;
+}
+
+const maxOutputBytes = 64 * 1024;
+const idPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface CompanionSessionView {
   sessionId: string;
@@ -75,6 +85,11 @@ export class CompanionHttpServer {
       writeJson(response, 200, { ok: true, mode: "loopback" });
       return;
     }
+    const outputPath = request.url?.match(/^\/v1\/companion\/hosts\/([^/]+)\/sessions\/([^/]+)\/output$/);
+    if (request.method === "GET" && outputPath) {
+      this.handleOutput(request, response, outputPath[1] ?? "", outputPath[2] ?? "");
+      return;
+    }
     const sessionPath = request.url?.match(/^\/v1\/companion\/hosts\/([^/]+)\/sessions$/);
     if (request.method === "GET" && sessionPath) {
       if (!this.options.readModel || !isLoopback(request.socket.remoteAddress)) {
@@ -128,6 +143,53 @@ export class CompanionHttpServer {
     } catch (error) {
       writeJson(response, 400, { error: error instanceof Error ? error.message : "invalid-request" });
     }
+  }
+
+  /** `attach-read`: bounded tail of a session's terminal output. Read-only; there is no input route. */
+  private handleOutput(request: IncomingMessage, response: ServerResponse, rawHost: string, rawSession: string): void {
+    const source = this.options.outputSource;
+    if (!source || !isLoopback(request.socket.remoteAddress)) {
+      writeJson(response, 403, { error: "output-unavailable" });
+      return;
+    }
+    let hostId: string;
+    let sessionId: string;
+    try {
+      hostId = decodeURIComponent(rawHost);
+      sessionId = decodeURIComponent(rawSession);
+    } catch {
+      writeJson(response, 400, { error: "invalid-id" });
+      return;
+    }
+    if (!idPattern.test(hostId) || !idPattern.test(sessionId)) {
+      writeJson(response, 400, { error: "invalid-id" });
+      return;
+    }
+    const clientId = request.headers["x-nexus-client-id"];
+    const authorization = request.headers.authorization;
+    const grantId = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+    if (typeof clientId !== "string" || clientId.length === 0 || clientId.length > 128 || !grantId || grantId.length > 128 ||
+      !this.policy.validateGrant(grantId, hostId, clientId, "attach-read", new Date().toISOString())) {
+      writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    let output: string | null;
+    try {
+      output = source.readOutput(hostId, sessionId, maxOutputBytes);
+    } catch {
+      output = null;
+    }
+    if (output === null) {
+      writeJson(response, 404, { error: "unknown-session" });
+      return;
+    }
+    // Enforce the bound here too, so a misbehaving source cannot return unbounded output.
+    const bytes = Buffer.from(output, "utf8");
+    const truncated = bytes.length > maxOutputBytes;
+    let start = truncated ? bytes.length - maxOutputBytes : 0;
+    // Do not begin mid-character: skip UTF-8 continuation bytes (10xxxxxx).
+    while (truncated && start < bytes.length && ((bytes[start] ?? 0) & 0xc0) === 0x80) start += 1;
+    writeJson(response, 200, { sessionId, truncated, output: truncated ? bytes.subarray(start).toString("utf8") : output });
   }
 
   private consumeAuthBudget(source: string): boolean {

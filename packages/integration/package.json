@@ -13,6 +13,7 @@
     "./companion-policy": "./src/companion-policy.ts",
     "./companion-http": "./src/companion-http.ts",
     "./metadata-read-model": "./src/metadata-read-model.ts",
-    "./companion-service": "./src/companion-service.ts"
+    "./companion-service": "./src/companion-service.ts",
+    "./supervisor-output-source": "./src/supervisor-output-source.ts"
   }
 }

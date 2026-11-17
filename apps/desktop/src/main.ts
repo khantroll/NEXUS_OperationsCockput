@@ -7,6 +7,7 @@ import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, t
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
 import { startCompanionService, type CompanionService } from "@nexus/integration/companion-service";
 import { createMetadataReadModel } from "@nexus/integration/metadata-read-model";
+import { createSupervisorOutputSource } from "@nexus/integration/supervisor-output-source";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
@@ -16,6 +17,7 @@ let hostSupervisor: PtySupervisor;
 let metadataStore: MetadataStore;
 let companion: CompanionService | null = null;
 let companionTokenRevealed = false;
+const companionHostId = "xenos-windows";
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
 const writerBySession = new Map<string, string>();
@@ -365,7 +367,7 @@ app.whenReady().then(async () => {
   hostSupervisor = new PtySupervisor({
     maxOutputBytes: 64 * 1024,
     metadata: metadataStore,
-    hostId: "xenos-windows",
+    hostId: companionHostId,
     hostBootEpoch,
   });
   registerHostIpc();
@@ -390,9 +392,10 @@ app.whenReady().then(async () => {
   if (process.env.NEXUS_DESKTOP_SMOKE !== "1") {
     try {
       companion = await startCompanionService({
-        hostId: "xenos-windows",
+        hostId: companionHostId,
         displayName: "Xenos Windows",
         readModel: createMetadataReadModel(metadataStore),
+        outputSource: createSupervisorOutputSource(hostSupervisor, companionHostId),
         credentialsPath: path.join(app.getPath("userData"), "companion-credentials.json"),
       });
     } catch (error) {

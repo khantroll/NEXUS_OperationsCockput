@@ -64,6 +64,17 @@ calendar estimates.
   file/args/cwd, wraps a lone command in `env --`, and sends trailing `;` input as hex bytes. Regression
   tests cover each. Validated with real tmux 3.6a (an MSYS build run from Windows). A `linux-tmux` CI job
   is configured but has not run yet, so nothing is verified on a native Linux host.
+- M2.8 read-only attach: with an `attach-read` grant (distinct from `read-workspace`) a loopback client can
+  GET `/v1/companion/hosts/<host>/sessions/<id>/output` for the last 64 KiB of a session's terminal output
+  (any session the supervisor still holds on that host, including exited ones not yet disposed), served from
+  a read-only supervisor attachment. There is no input or exec route (POST is 404). The
+  endpoint is off unless an output source is configured, and terminal output may contain sensitive text.
+  Authority caveat: `attach-read` is a separate grant type, not a separate credential. Whoever holds the
+  per-run enrollment token can request either capability, and grants are per host, not per session. That
+  matches the single-user model (you are the only token holder) but is not yet per-client/per-session
+  authorization, so this does not by itself close the M2 exit criterion for multi-user use. `truncated`
+  reports only the HTTP-layer cut, not output the supervisor already dropped from its 64 KiB buffer.
+  Still loopback-only, polling (no streaming), Windows desktop sessions only; tmux sessions are not exposed.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
 
 ## M3 — Project workspaces and integrations
