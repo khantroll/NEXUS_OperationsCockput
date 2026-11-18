@@ -5,8 +5,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import type { ForkOptions } from "node:child_process";
 
-installConptyForkGuard();
-
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";
 
@@ -422,3 +420,5 @@ function modulePathToString(modulePath: ForkModulePath): string {
   if (modulePath instanceof URL) return modulePath.pathname;
   return String(modulePath);
 }
+
+installConptyForkGuard();
