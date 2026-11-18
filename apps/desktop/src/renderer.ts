@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { CommandEnvelope, PanelCommand, PanelRecord, WorkspaceRecord } from "../../../packages/contracts/src/index.js";
 import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
+import { metroWorkspaceTiles, partitionMetroPanels } from "../../../packages/core/src/metro-shelf.js";
 import { TerminalView, discardTerminalBuffer, routeTerminalData } from "./terminal-view.js";
 
 declare global {
@@ -67,6 +68,8 @@ function App(): React.JSX.Element {
     createdAt: "2026-11-15T00:00:00.000Z",
     lastOpenedAt: "2026-11-15T00:00:00.000Z",
   });
+  const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([]);
+  const [panelsByWorkspace, setPanelsByWorkspace] = useState<ReadonlyMap<string, PanelRecord[]>>(new Map());
   const [companionInfo, setCompanionInfo] = useState<Awaited<ReturnType<Window["nexusCompanion"]["info"]>>>(null);
   const [companionDismissed, setCompanionDismissed] = useState(false);
   const [sshInfo, setSshInfo] = useState<Awaited<ReturnType<Window["nexusSsh"]["list"]>> | null>(null);
@@ -233,13 +236,22 @@ function App(): React.JSX.Element {
             setProfilePanels((current) => [...current, recovered]);
           } catch { /* session is gone; leave the saved panel out */ }
         }));
+        setWorkspaces(workspaces);
         const current = workspaces.find((candidate) => candidate.workspaceId === "default");
         if (current) setWorkspace({ ...current, lastOpenedAt: new Date().toISOString() });
         else {
           const created = { ...workspace, lastOpenedAt: new Date().toISOString() };
           setWorkspace(created);
+          setWorkspaces((existing) => existing.some((item) => item.workspaceId === created.workspaceId) ? existing : [...existing, created]);
           void window.nexusWorkspace.save(created);
         }
+        const listed = new Map<string, PanelRecord[]>();
+        listed.set("default", savedPanels);
+        setPanelsByWorkspace(listed);
+        void Promise.all(workspaces.filter((item) => item.workspaceId !== "default").map(async (item) => {
+          const panels = await window.nexusLayout.list(item.workspaceId);
+          setPanelsByWorkspace((currentMap) => new Map(currentMap).set(item.workspaceId, panels));
+        }));
         setLayoutLoaded(true);
       })
       .catch(() => setLayoutLoaded(true));
@@ -256,6 +268,50 @@ function App(): React.JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attachmentId, layoutLoaded]);
 
+  useEffect(() => {
+    const currentPanels = [panel, ...profilePanels.map((entry) => entry.panel)].filter((item) => item.workspaceId === workspace.workspaceId);
+    setPanelsByWorkspace((current) => new Map(current).set(workspace.workspaceId, currentPanels));
+  }, [panel, profilePanels, workspace.workspaceId]);
+
+  const visibleProfiles = profilePanels.filter((entry) => entry.panel.workspaceId === workspace.workspaceId);
+  const shelf = partitionMetroPanels([
+    ...(panel.workspaceId === workspace.workspaceId ? [panel] : []),
+    ...visibleProfiles.map((entry) => entry.panel),
+  ]);
+  const tiles = metroWorkspaceTiles(workspaces, workspace.workspaceId, panelsByWorkspace);
+  const tileColors = ["#0072C6", "#00A4A6", "#A7008F", "#DC572E", "#8CBD18", "#F0A30A"];
+
+  function snapBackPanel(target: PanelRecord): void {
+    if (target.panelId === panel.panelId) dispatch({ op: "snapBack", panelId: target.panelId });
+    else dispatchProfile(target.panelId, { op: "snapBack", panelId: target.panelId });
+  }
+
+  function parkPanel(target: PanelRecord): void {
+    if (target.panelId === panel.panelId) dispatch({ op: "park", panelId: target.panelId });
+    else dispatchProfile(target.panelId, { op: "park", panelId: target.panelId });
+  }
+
+  function renderPanelChrome(target: PanelRecord, title: string, extra?: React.ReactNode): React.JSX.Element {
+    const parked = target.placement === "parked";
+    return React.createElement("article", {
+      key: target.panelId,
+      style: parked ? styles.parkedTile : styles.liveTile,
+      "data-panel-id": target.panelId,
+      "data-panel-placement": target.placement,
+      "data-panel-revision": target.revision,
+      onDoubleClick: parked ? () => snapBackPanel(target) : undefined,
+    },
+      React.createElement("div", { style: styles.tileHeader },
+        React.createElement("div", null,
+          React.createElement("strong", null, title),
+          React.createElement("div", { style: styles.tileState }, (parked ? "Parked · session still live" : "Running") + " · " + target.placement),
+        ),
+        React.createElement("span", { style: styles.revision }, "rev " + target.revision),
+      ),
+      extra ?? null,
+    );
+  }
+
   return React.createElement(
     "main",
     { style: styles.app },
@@ -264,14 +320,86 @@ function App(): React.JSX.Element {
       { style: styles.header },
       React.createElement("div", null,
         React.createElement("div", { style: styles.eyebrow }, "NEXUS OPERATIONS COCKPIT"),
-        React.createElement("h1", { style: styles.title }, "Command workspace"),
+        React.createElement("h1", { style: styles.title }, workspace.name),
       ),
       React.createElement("span", { style: styles.badge }, window.nexusShell.version),
+    ),
+    React.createElement("nav", { style: styles.switcher, "aria-label": "Workspaces" },
+      tiles.length === 0
+        ? React.createElement("div", { style: styles.workspaceTile, "data-current": "true" }, workspace.name)
+        : tiles.map((tile, index) => React.createElement("button", {
+          key: tile.workspaceId,
+          type: "button",
+          style: { ...styles.workspaceTile, background: tileColors[index % tileColors.length], outline: tile.current ? "3px solid #fff" : "none" },
+          "data-current": tile.current ? "true" : "false",
+          onClick: () => {
+            const record = workspaces.find((item) => item.workspaceId === tile.workspaceId);
+            if (record) setWorkspace({ ...record, lastOpenedAt: new Date().toISOString() });
+          },
+        },
+          React.createElement("span", { style: styles.workspaceTileName }, tile.name),
+          React.createElement("span", { style: styles.workspaceTileMeta }, tile.liveCount + " live · " + tile.parkedCount + " parked"),
+        )),
     ),
     React.createElement(
       "section",
       { style: styles.workspace },
+      React.createElement("section", { style: styles.canvas },
+        React.createElement("div", { style: styles.sectionLabel }, "LIVE WORKSPACE"),
+        React.createElement("div", { style: styles.liveGrid },
+          shelf.live.length === 0
+            ? React.createElement("div", { style: styles.muted }, "No live panels in this workspace. Restore one from Parked, or launch a session.")
+            : null,
+          shelf.live.map((item) => {
+            if (item.panelId === panel.panelId) {
+              return renderPanelChrome(panel, "Terminal presentation",
+                React.createElement(React.Fragment, null,
+                  React.createElement("pre", { style: styles.terminal }, hostOutput || "$ nexus presentation\n> sessionId: "+panel.sessionId+"\n> connect the read-only host bridge to observe bounded PTY output"),
+                  React.createElement("div", { style: styles.controls },
+                    React.createElement("button", { onClick: () => { void connectHost(); } }, "Connect host"),
+                    React.createElement("button", { onClick: () => { void disconnectHost(); } }, "Disconnect view"),
+                    React.createElement("button", { onClick: () => parkPanel(panel) }, "Park"),
+                    React.createElement("button", { onClick: () => dispatch({ op: "summon", panelId: panel.panelId, targetSurface: "main" }) }, "Summon"),
+                    React.createElement("button", { onClick: () => dispatch({ op: "setHome", panelId: panel.panelId, anchor: { ...panel.homeAnchor, layoutRevision: panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
+                    React.createElement("span", { style: styles.muted }, "Ctrl+Shift: P park · S summon · B SnapBack · H home"),
+                  ),
+                ),
+              );
+            }
+            const entry = visibleProfiles.find((candidate) => candidate.panel.panelId === item.panelId);
+            if (!entry) return renderPanelChrome(item, item.panelId);
+            return renderPanelChrome(entry.panel, entry.label,
+              React.createElement(React.Fragment, null,
+                React.createElement(TerminalView, { key: entry.attachmentId, host: window.nexusHost, sessionId: entry.panel.sessionId, attachmentId: entry.attachmentId, initialOutput: entry.output, writable: entry.writable }),
+                React.createElement("div", { style: styles.controls },
+                  React.createElement("button", { onClick: () => parkPanel(entry.panel) }, "Park"),
+                  React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),
+                  React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "setHome", panelId: entry.panel.panelId, anchor: { ...entry.panel.homeAnchor, layoutRevision: entry.panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
+                  React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "interrupt"); } }, "Interrupt"),
+                  entry.profile ? React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "restart"); } }, "Restart") : null,
+                  React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "terminate"); } }, "Terminate"),
+                  React.createElement("button", { onClick: () => { void closeProfilePanel(entry); } }, "Close"),
+                  lifecycleErrors[entry.panel.panelId] ? React.createElement("span", { style: styles.error }, lifecycleErrors[entry.panel.panelId]) : null,
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
       React.createElement("aside", { style: styles.shelf },
+        React.createElement("div", { style: styles.sectionLabel }, "PARKED"),
+        shelf.parked.length === 0
+          ? React.createElement("div", { style: styles.muted }, "Nothing parked. Parked sessions stay live.")
+          : shelf.parked.map((item) => {
+            const entry = visibleProfiles.find((candidate) => candidate.panel.panelId === item.panelId);
+            const title = item.panelId === panel.panelId ? "Terminal presentation" : (entry?.label ?? item.panelId);
+            return renderPanelChrome(item, title,
+              React.createElement("div", { style: styles.controls },
+                React.createElement("button", { onClick: () => snapBackPanel(item) }, "Restore"),
+                React.createElement("span", { style: styles.muted }, "Returns to " + item.homeAnchor.groupId),
+              ),
+            );
+          }),
         React.createElement("div", { style: styles.sectionLabel }, "SESSION SHELF"),
         sessions.length === 0
           ? React.createElement("div", { style: styles.muted }, "No persisted sessions")
@@ -317,85 +445,39 @@ function App(): React.JSX.Element {
           React.createElement("button", { onClick: () => setCompanionDismissed(true) }, "Hide"),
         ) : null,
       ),
-      React.createElement("section", { style: styles.canvas },
-        React.createElement("div", { style: styles.sectionLabel }, "WORKSPACE / "+workspace.name.toUpperCase()),
-          React.createElement("article", {
-            style: styles.panel,
-            "data-panel-id": panel.panelId,
-            "data-panel-placement": panel.placement,
-            "data-panel-revision": panel.revision,
-          },
-          React.createElement("div", { style: styles.panelHeader },
-            React.createElement("div", null,
-              React.createElement("strong", null, "Terminal presentation"),
-              React.createElement("div", { style: styles.muted }, "presentation state: "+panel.placement),
-            ),
-            React.createElement("span", { style: styles.revision }, "rev "+panel.revision),
-          ),
-          profilePanels.map((entry) => React.createElement("article", {
-            key: entry.panel.panelId,
-            style: styles.panel,
-            "data-panel-id": entry.panel.panelId,
-            "data-panel-placement": entry.panel.placement,
-            "data-panel-revision": entry.panel.revision,
-          },
-            React.createElement("div", { style: styles.panelHeader },
-              React.createElement("div", null,
-                React.createElement("strong", null, entry.label),
-                React.createElement("div", { style: styles.muted }, "presentation state: "+entry.panel.placement),
-              ),
-              React.createElement("span", { style: styles.revision }, "rev "+entry.panel.revision),
-            ),
-            React.createElement(TerminalView, { key: entry.attachmentId, host: window.nexusHost, sessionId: entry.panel.sessionId, attachmentId: entry.attachmentId, initialOutput: entry.output, writable: entry.writable }),
-            React.createElement("div", { style: styles.controls },
-              React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "park", panelId: entry.panel.panelId }) }, "Park"),
-              React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),
-              React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "snapBack", panelId: entry.panel.panelId }) }, "SnapBack"),
-              React.createElement("button", { onClick: () => dispatchProfile(entry.panel.panelId, { op: "setHome", panelId: entry.panel.panelId, anchor: { ...entry.panel.homeAnchor, layoutRevision: entry.panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
-              React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "interrupt"); } }, "Interrupt"),
-              entry.profile ? React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "restart"); } }, "Restart") : null,
-              React.createElement("button", { onClick: () => { void runProfileLifecycle(entry, "terminate"); } }, "Terminate"),
-              React.createElement("button", { onClick: () => { void closeProfilePanel(entry); } }, "Close"),
-              lifecycleErrors[entry.panel.panelId] ? React.createElement("span", { style: styles.error }, lifecycleErrors[entry.panel.panelId]) : null,
-            ),
-          )),
-          React.createElement("pre", { style: styles.terminal }, hostOutput || "$ nexus presentation\n> sessionId: "+panel.sessionId+"\n> connect the read-only host bridge to observe bounded PTY output"),
-          React.createElement("div", { style: styles.controls },
-            React.createElement("button", { onClick: () => { void connectHost(); } }, "Connect host"),
-            React.createElement("button", { onClick: () => { void disconnectHost(); } }, "Disconnect view"),
-            React.createElement("button", { onClick: () => dispatch({ op: "park", panelId: panel.panelId }) }, "Park"),
-            React.createElement("button", { onClick: () => dispatch({ op: "summon", panelId: panel.panelId, targetSurface: "main" }) }, "Summon"),
-            React.createElement("button", { onClick: () => dispatch({ op: "snapBack", panelId: panel.panelId }) }, "SnapBack"),
-            React.createElement("button", { onClick: () => dispatch({ op: "setHome", panelId: panel.panelId, anchor: { ...panel.homeAnchor, layoutRevision: panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
-            React.createElement("span", { style: styles.muted }, "Ctrl+Shift: P park · S summon · B SnapBack · H home"),
-          ),
-        ),
-      ),
     ),
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  app: { minHeight: "100vh", padding: "28px 34px", boxSizing: "border-box", background: "#0b1020", color: "#e8ecf7", fontFamily: "Inter, Segoe UI, sans-serif" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 },
-  eyebrow: { color: "#7c8cff", fontSize: 11, letterSpacing: 2.2, fontWeight: 700 },
-  title: { margin: "7px 0 0", fontSize: 30, letterSpacing: -0.8 },
-  badge: { color: "#aab5cc", border: "1px solid #293454", borderRadius: 999, padding: "7px 11px", fontSize: 12 },
-  workspace: { display: "grid", gridTemplateColumns: "250px 1fr", gap: 18, minHeight: 620 },
-  shelf: { background: "#11182b", border: "1px solid #202b48", borderRadius: 14, padding: 18 },
-  sectionLabel: { color: "#7380a1", fontSize: 10, letterSpacing: 1.8, fontWeight: 700, marginBottom: 14 },
-  sessionCard: { display: "grid", gap: 7, padding: 13, borderRadius: 10, background: "#17213a", border: "1px solid #334266" },
-  muted: { color: "#8491b0", fontSize: 12 },
-  running: { color: "#61d6a2", fontSize: 12 },
-  error: { color: "#ff9b9b", fontSize: 12 },
-  companionCard: { display: "grid", gap: 8, marginTop: 16, padding: 13, borderRadius: 10, background: "#17213a", border: "1px solid #334266", wordBreak: "break-all" },
-  token: { padding: 8, borderRadius: 6, background: "#080d18", color: "#a6f3c5", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 12 },
-  canvas: { background: "#0e1527", border: "1px solid #202b48", borderRadius: 14, padding: 22 },
-  panel: { maxWidth: 780, background: "#11182b", border: "1px solid #2b385b", borderRadius: 12, overflow: "hidden", boxShadow: "0 14px 50px #05081480" },
-  panelHeader: { display: "flex", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid #202b48" },
-  revision: { color: "#7180a5", fontSize: 12 },
-  terminal: { margin: 0, minHeight: 220, padding: 20, color: "#a6f3c5", background: "#080d18", fontFamily: "Cascadia Code, Consolas, monospace", lineHeight: 1.7, fontSize: 13 },
-  controls: { display: "flex", gap: 8, padding: 14 },
+  app: { minHeight: "100vh", padding: "24px 28px", boxSizing: "border-box", background: "#111111", color: "#ffffff", fontFamily: "Segoe UI, Segoe UI Variable, sans-serif" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  eyebrow: { color: "#ffffff", fontSize: 11, letterSpacing: 2.4, fontWeight: 700, opacity: 0.7 },
+  title: { margin: "6px 0 0", fontSize: 36, fontWeight: 300, letterSpacing: -0.6 },
+  badge: { color: "#111111", background: "#ffffff", padding: "6px 12px", fontSize: 12, fontWeight: 600 },
+  switcher: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" },
+  workspaceTile: { border: "none", color: "#fff", minWidth: 160, minHeight: 72, padding: "12px 14px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
+  workspaceTileName: { fontSize: 18, fontWeight: 600 },
+  workspaceTileMeta: { fontSize: 11, opacity: 0.9 },
+  workspace: { display: "grid", gridTemplateColumns: "1fr 300px", gap: 12, minHeight: 620 },
+  shelf: { background: "#1b1b1b", padding: 16, display: "grid", alignContent: "start", gap: 10 },
+  sectionLabel: { color: "#ffffff", fontSize: 11, letterSpacing: 2, fontWeight: 700, margin: "8px 0", opacity: 0.7 },
+  sessionCard: { display: "grid", gap: 6, padding: 12, background: "#2b2b2b" },
+  muted: { color: "#c8c8c8", fontSize: 12 },
+  running: { color: "#a6ef3a", fontSize: 12 },
+  error: { color: "#ff8a80", fontSize: 12 },
+  companionCard: { display: "grid", gap: 8, marginTop: 8, padding: 12, background: "#2b2b2b", wordBreak: "break-all" },
+  token: { padding: 8, background: "#111111", color: "#a6ef3a", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 12 },
+  canvas: { background: "#1b1b1b", padding: 16, minWidth: 0 },
+  liveGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 },
+  liveTile: { background: "#0072C6", color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column" },
+  parkedTile: { background: "#2b2b2b", color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", border: "2px solid #555" },
+  tileHeader: { display: "flex", justifyContent: "space-between", padding: "14px 16px", alignItems: "flex-start" },
+  tileState: { fontSize: 12, marginTop: 4, textTransform: "uppercase", letterSpacing: 1, opacity: 0.9 },
+  revision: { color: "#fff", fontSize: 12, opacity: 0.8 },
+  terminal: { margin: 0, minHeight: 180, padding: 16, color: "#e8ffbf", background: "#0a0a0a", fontFamily: "Cascadia Code, Consolas, monospace", lineHeight: 1.6, fontSize: 13 },
+  controls: { display: "flex", gap: 8, padding: 12, flexWrap: "wrap", background: "#0a0a0a" },
+  profileControls: { display: "grid", gap: 8 },
 };
 
 createRoot(document.getElementById("root")!).render(React.createElement(App));
