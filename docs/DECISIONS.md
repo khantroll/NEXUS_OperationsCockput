@@ -5,7 +5,7 @@ Each decision is **proposed** until backed by an executable spike or recorded ap
 |---|---|---|---|
 | ADR-001 | Hybrid desktop-first control plane; locate the first service on the primary Windows host or Linux | Accepted for M0 planning (Windows-first lab) | broader connection/recovery tests |
 | ADR-002 | Durable Windows PTY owner independent of GUI | Constrained: renderer-reload survival only | UI-crash and host-agent-crash experiments; supervisor still runs in Electron main |
-| ADR-003 | Desktop windowing: Dockview was the original spike; Metro is now the chosen UI direction, with WebContentsView for provider pages | Direction changed; Dockview not adopted | Metro layout spike; WebContentsView dock/float/park tests |
+| ADR-003 | Desktop windowing: Dockview was the original spike; Metro is now the chosen UI direction, with WebContentsView for provider pages | Direction changed; Dockview not adopted. Metro spike is on `main`; restore/preview/workspace follow-up in progress | WebContentsView dock/float/park tests |
 | ADR-004 | SQLite non-secret metadata store | Accepted for M0/M1 (prototype + desktop wiring) | encryption-at-rest and OS credential-store integration |
 | ADR-005 | Exclusive writer lease for shared terminals | Accepted for the in-process lab (unit tests) | two live desktop clients and disconnect races |
 | ADR-006 | Private network for remote access plus app auth | Accepted for v0.1: loopback default, Tailscale/WireGuard for remote; public https is experimental and opt-in only | threat-model review before any public exposure |
