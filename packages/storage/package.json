@@ -1,0 +1,12 @@
+{
+  "name": "@nexus/storage",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@nexus/contracts": "0.1.0"
+  },
+  "exports": {
+    "./metadata": "./src/metadata.ts"
+  }
+}

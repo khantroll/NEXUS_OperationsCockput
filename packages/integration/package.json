@@ -1,0 +1,20 @@
+{
+  "name": "@nexus/integration",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@nexus/core": "0.1.0",
+    "@nexus/host-agent": "0.1.0"
+  },
+  "exports": {
+    "./provider": "./src/provider.ts",
+    "./host-enrollment": "./src/host-enrollment.ts",
+    "./companion-policy": "./src/companion-policy.ts",
+    "./companion-http": "./src/companion-http.ts",
+    "./companion-network": "./src/companion-network.ts",
+    "./metadata-read-model": "./src/metadata-read-model.ts",
+    "./companion-service": "./src/companion-service.ts",
+    "./supervisor-output-source": "./src/supervisor-output-source.ts"
+  }
+}

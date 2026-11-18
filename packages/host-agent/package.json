@@ -1,0 +1,15 @@
+{
+  "name": "@nexus/host-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./supervisor": "./src/supervisor.ts",
+    "./tmux": "./src/tmux.ts",
+    "./ssh-profile": "./src/ssh-profile.ts"
+  },
+  "dependencies": {
+    "@nexus/contracts": "0.1.0",
+    "node-pty": "^1.1.0"
+  }
+}
