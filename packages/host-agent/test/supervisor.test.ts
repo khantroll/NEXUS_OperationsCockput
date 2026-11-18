@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SessionRecord } from "../../contracts/src/index.js";
-import { PtySupervisor, resolveCliProfile, type SessionMetadataSink } from "../src/supervisor.js";
+import { PtySupervisor, conptyForkGuardIsInstalled, envWithoutTestContext, resolveCliProfile, sanitizeExecArgv, type SessionMetadataSink } from "../src/supervisor.js";
 
 let conptyCleanupDiagnostics = 0;
 process.on("uncaughtException", (error) => {
@@ -17,6 +17,34 @@ process.on("exit", () => {
   if (conptyCleanupDiagnostics > 0) {
     console.warn(`node-pty emitted ${conptyCleanupDiagnostics} known ConPTY cleanup diagnostic(s)`);
   }
+});
+
+
+test("sanitizeExecArgv strips test-runner flags and keeps runtime flags", () => {
+  assert.deepEqual(
+    sanitizeExecArgv([
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=spec",
+      "--test-isolation=process",
+      "--experimental-test-isolation",
+      "--watch",
+      "--enable-source-maps",
+    ]),
+    ["--enable-source-maps"],
+  );
+  assert.deepEqual(sanitizeExecArgv([]), []);
+});
+
+test("envWithoutTestContext drops NODE_TEST_CONTEXT and leaves other values", () => {
+  assert.deepEqual(
+    envWithoutTestContext({ NODE_TEST_CONTEXT: "1", PATH: "/bin", HOME: "/tmp" }),
+    { PATH: "/bin", HOME: "/tmp" },
+  );
+});
+
+test("importing the supervisor installs the ConPTY fork guard", () => {
+  assert.equal(conptyForkGuardIsInstalled(), true);
 });
 
 const node = process.execPath;

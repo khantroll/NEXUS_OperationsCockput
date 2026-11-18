@@ -45,6 +45,8 @@ The focused host-agent tests are in
   cleanup is retained because alternatives tested here did not reliably signal PTY exit.
 - That helper is forked with the parent's `execArgv`. Under `node --test` it was becoming a
   nested test runner, throwing `AttachConsole failed` when the PID had already exited, and
-  failing `supervisor.test.ts` at file scope. `installConptyForkGuard()` (loaded with the
-  supervisor) strips test-runner flags, clears `NODE_TEST_CONTEXT`, and silences the helper's
-  stderr. Dispose still calls `pty.kill()` so the native handle is released.
+  failing `supervisor.test.ts` at file scope. The supervisor installs a fork guard on load
+  that strips test-runner flags, clears `NODE_TEST_CONTEXT`, and silences the helper's
+  stderr. The guard lives in `supervisor.ts` so Electron's type-stripped load of that file
+  does not depend on a sibling `.js` module. Dispose still calls `pty.kill()` so the native
+  handle is released.
