@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     "./layout": "./src/layout.ts",
-    "./metro-shelf": "./src/metro-shelf.ts"
+    "./metro-shelf": "./src/metro-shelf.ts",
+    "./metro-workspace": "./src/metro-workspace.ts",
+    "./metro-preview": "./src/metro-preview.ts"
   }
 }
