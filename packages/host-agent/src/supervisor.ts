@@ -1,5 +1,5 @@
 import * as pty from "node-pty";
-import { installConptyForkGuard } from "./conpty-fork-guard.js";
+import { installConptyForkGuard } from "@nexus/host-agent/conpty-fork-guard";
 import { assertNonSecretCliArguments, type CliProfileRecord, type SessionRecord } from "@nexus/contracts";
 import path from "node:path";
 import fs from "node:fs";

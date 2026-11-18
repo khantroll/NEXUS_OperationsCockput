@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./supervisor": "./src/supervisor.ts",
+    "./conpty-fork-guard": "./src/conpty-fork-guard.ts",
     "./tmux": "./src/tmux.ts",
     "./ssh-profile": "./src/ssh-profile.ts"
   },
