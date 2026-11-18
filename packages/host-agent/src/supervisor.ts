@@ -1,7 +1,10 @@
 import * as pty from "node-pty";
+import { installConptyForkGuard } from "./conpty-fork-guard.js";
 import { assertNonSecretCliArguments, type CliProfileRecord, type SessionRecord } from "@nexus/contracts";
 import path from "node:path";
 import fs from "node:fs";
+
+installConptyForkGuard();
 
 export type PtyStatus = "running" | "exited";
 export type AttachmentMode = "read" | "write";

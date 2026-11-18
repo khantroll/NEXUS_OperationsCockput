@@ -7,6 +7,8 @@ let conptyCleanupDiagnostics = 0;
 process.on("uncaughtException", (error) => {
   if (error instanceof Error && error.message === "AttachConsole failed") {
     conptyCleanupDiagnostics += 1;
+    // Node sets exitCode to 1 before this handler runs even when the error is swallowed.
+    if (process.exitCode === 1) process.exitCode = 0;
     return;
   }
   throw error;

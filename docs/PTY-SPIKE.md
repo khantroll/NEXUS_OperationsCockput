@@ -43,3 +43,8 @@ The focused host-agent tests are in
   durable PTY restart recovery and production attachment authorization remain unfinished.
 - The cleanup diagnostic is isolated to node-pty's ConPTY process-list helper; explicit native
   cleanup is retained because alternatives tested here did not reliably signal PTY exit.
+- That helper is forked with the parent's `execArgv`. Under `node --test` it was becoming a
+  nested test runner, throwing `AttachConsole failed` when the PID had already exited, and
+  failing `supervisor.test.ts` at file scope. `installConptyForkGuard()` (loaded with the
+  supervisor) strips test-runner flags, clears `NODE_TEST_CONTEXT`, and silences the helper's
+  stderr. Dispose still calls `pty.kill()` so the native handle is released.
