@@ -3,14 +3,14 @@ Each decision is **proposed** until backed by an executable spike or recorded ap
 
 | ID | Decision | State | Evidence needed |
 |---|---|---|---|
-| ADR-001 | Hybrid desktop-first control plane; locate service on Xenos or Linux | Proposed | connection/recovery tests |
-| ADR-002 | Durable Windows PTY owner independent of GUI | Feasibility required | UI-crash + host-agent-crash experiments |
-| ADR-003 | Dockview + Electron WebContentsView for desktop | Feasibility required | tab/popout continuity tests |
-| ADR-004 | SQLite non-secret metadata store | Proposed | schema/migration prototype |
-| ADR-005 | Exclusive writer lease for shared terminals | Proposed | race and disconnect tests |
-| ADR-006 | Private network for remote access plus app auth | Proposed | security threat model |
-| ADR-007 | Provider websites: compatible embedded view or external browser | Proposed | per-provider test matrix |
-| ADR-008 | Windows/Xenos is first host; Electron + React + TypeScript is first desktop stack | Accepted for M0 | desktop shell and host integration spike |
+| ADR-001 | Hybrid desktop-first control plane; locate the first service on the primary Windows host or Linux | Accepted for M0 planning (Windows-first lab) | broader connection/recovery tests |
+| ADR-002 | Durable Windows PTY owner independent of GUI | Constrained: renderer-reload survival only | UI-crash and host-agent-crash experiments; supervisor still runs in Electron main |
+| ADR-003 | Desktop windowing: Dockview was the original spike; Metro is now the chosen UI direction, with WebContentsView for provider pages | Direction changed; Dockview not adopted | Metro layout spike; WebContentsView dock/float/park tests |
+| ADR-004 | SQLite non-secret metadata store | Accepted for M0/M1 (prototype + desktop wiring) | encryption-at-rest and OS credential-store integration |
+| ADR-005 | Exclusive writer lease for shared terminals | Accepted for the in-process lab (unit tests) | two live desktop clients and disconnect races |
+| ADR-006 | Private network for remote access plus app auth | Accepted for v0.1: loopback default, Tailscale/WireGuard for remote; public https is experimental and opt-in only | threat-model review before any public exposure |
+| ADR-007 | Provider websites: compatible embedded view or external browser | Partial: top-level view loads; iframes refused; sign-in untested | per-provider sign-in and dock/float/park matrix |
+| ADR-008 | The first host is a Windows workstation; Electron + React + TypeScript is the first desktop stack | Accepted for M0 | desktop shell and host integration spike |
 | ADR-009 | Host-agent and persistent session supervisor are renderer-independent; cross-platform host ports are required | Accepted for M0 | supervisor lifecycle and Linux/macOS port interfaces |
 | ADR-010 | Windows terminal sessions use ConPTY through a maintained PTY library, not a custom terminal emulator | Accepted for M0 | executable two-session ConPTY demonstration |
 | ADR-011 | UI/panel survival is separate from supervisor/process survival; only demonstrated failure boundaries may be claimed | Accepted for M0 | renderer reload and supervisor-failure experiments |

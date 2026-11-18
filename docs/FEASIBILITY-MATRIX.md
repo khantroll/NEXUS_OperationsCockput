@@ -4,9 +4,9 @@ must not be read as full product acceptance. Record test evidence with commit an
 
 | Scenario | Expected assertion | Status |
 |---|---|---|
-| PTY park -> summon -> SnapBack | same sessionId + host process | Limited: reducer + live host integration passed; renderer integration not tested |
+| PTY park -> summon -> SnapBack | same sessionId + host process | Passed in host integration and desktop renderer reload smoke; not tested across a GUI/main-process crash |
 | Two CLIs running concurrently | isolated independent PTYs | Passed in host-agent spike; 2 sessions, distinct PIDs |
-| Explicit PTY termination | process exits and UI can mark exited | Limited: observed exited; node-pty emits cleanup diagnostics |
+| Explicit PTY termination | process exits and UI can mark exited | Passed; node-pty's ConPTY process-list helper can still emit AttachConsole during dispose. The supervisor installs a fork guard so that helper does not fail `node --test` |
 | GUI process crash | host-managed PTY remains attachable | Not tested |
 | Host agent crashes | honest status and documented survival | Not tested |
 | Browser view dock -> float in same window | JS counter and scroll unaffected | Not tested |
@@ -14,7 +14,7 @@ must not be read as full product acceptance. Record test evidence with commit an
 | Browser view parked -> summoned | same renderer if alive | Not tested |
 | GUI crash -> browser recovery | restore URL/profile; no unearned state claim | Not tested |
 | Second monitor disconnected | clamp window onscreen | Not tested |
-| Two clients attempt writing | one input lease only | Not tested |
+| Two clients attempt writing | one input lease only | Passed in the in-process session registry unit tests; not tested with two live desktop or companion clients |
 | Network interruptions | reconnect without duplicate process | Not tested |
 | Provider ChatGPT/Claude/Gemini: load as a top-level Electron `WebContentsView` | page loads and shows its sign-in UI | Limited: passed for all three, logged out (2026-11-17, Electron 45.3.2, see Provider probe) |
 | Provider ChatGPT/Claude/Gemini: embed in an iframe | page renders inside our page | Failed by design: all three refuse framing (see Provider probe); use a top-level view or the external browser |

@@ -62,7 +62,7 @@ test("each start issues a different token and a wrong token is rejected", async 
 
 test("aclIsRestricted accepts a single matching ACE and fails closed otherwise", () => {
   const f = "C:\\x\\c.json";
-  const me = "Xenos\\me";
+  const me = "TESTHOST\\me";
   const tail = "\n\nSuccessfully processed 1 files; Failed processing 0 files";
   assert.equal(aclIsRestricted(f + " " + me + ":(F)" + tail, f, me), true);
   assert.equal(aclIsRestricted(f + " " + me + ":(F)\n      Everyone:(R)" + tail, f, me), false);

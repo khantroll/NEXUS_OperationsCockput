@@ -36,10 +36,11 @@ test("config parsing accepts the three modes and rejects unsafe or malformed one
   assert.deepEqual(parseCompanionNetworkConfig('{"mode":"private"}').config, { mode: "private" });
   assert.match(parseCompanionNetworkConfig('{"mode":"private","bind":"0.0.0.0"}').error ?? "", /private/);
   assert.match(parseCompanionNetworkConfig('{"mode":"private","bind":"8.8.8.8"}').error ?? "", /private/);
-  assert.match(parseCompanionNetworkConfig('{"mode":"https","certFile":"c","keyFile":"k"}').error ?? "", /publicHost/);
-  assert.deepEqual(parseCompanionNetworkConfig('{"mode":"https","certFile":"c","keyFile":"k","publicHost":"nexus.example.com"}').config,
+  assert.match(parseCompanionNetworkConfig('{"mode":"https","certFile":"c","keyFile":"k","publicHost":"nexus.example.com"}').error ?? "", /experimentalPublicHttps/);
+  assert.match(parseCompanionNetworkConfig('{"mode":"https","certFile":"c","keyFile":"k"}').error ?? "", /experimentalPublicHttps|publicHost/);
+  assert.deepEqual(parseCompanionNetworkConfig('{"mode":"https","experimentalPublicHttps":true,"certFile":"c","keyFile":"k","publicHost":"nexus.example.com"}').config,
     { mode: "https", certFile: "c", keyFile: "k", publicHost: "nexus.example.com" });
-  assert.match(parseCompanionNetworkConfig('{"mode":"https","publicHost":"x.example.com"}').error ?? "", /certFile/);
+  assert.match(parseCompanionNetworkConfig('{"mode":"https","experimentalPublicHttps":true,"publicHost":"x.example.com"}').error ?? "", /certFile/);
   assert.match(parseCompanionNetworkConfig('{"mode":"wide-open"}').error ?? "", /mode/);
   assert.match(parseCompanionNetworkConfig('{"mode":"local","port":70000}').error ?? "", /port/);
   assert.match(parseCompanionNetworkConfig("nope").error ?? "", /JSON/);

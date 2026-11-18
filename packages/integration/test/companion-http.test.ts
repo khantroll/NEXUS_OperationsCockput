@@ -6,7 +6,7 @@ import { HostEnrollmentRegistry } from "../src/host-enrollment.js";
 
 test("loopback companion HTTP authorizes bounded read access without exposing the token", async () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment, 60_000));
   const address = await server.start();
   try {
@@ -30,7 +30,7 @@ test("loopback companion HTTP authorizes bounded read access without exposing th
 
 test("companion grant reads session metadata without exposing terminal access", async () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment, 60_000), {
     readModel: { listSessions: () => [{ sessionId: "session-1", kind: "local-pty", process: "running", transport: "connected", output: "secret-output", credentials: "secret" } as never] },
   });
@@ -57,7 +57,7 @@ test("companion grant reads session metadata without exposing terminal access", 
 
 test("revoking a host invalidates its existing companion grant", () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const policy = new CompanionPolicy(enrollment, 60_000);
   const result = policy.authorize({ hostId: issued.host.hostId, clientId: "client", enrollmentToken: issued.enrollmentToken, network: "private", capability: "read-workspace" }, "2026-11-16T01:00:00.000Z");
   assert.equal(result.accepted, true);
@@ -69,7 +69,7 @@ test("revoking a host invalidates its existing companion grant", () => {
 
 test("companion HTTP rejects untyped write or exec requests", async () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment));
   const address = await server.start();
   try {
@@ -87,7 +87,7 @@ test("companion HTTP rejects untyped write or exec requests", async () => {
 
 test("companion HTTP rate-limits repeated invalid authentication attempts", async () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const server = new CompanionHttpServer(new CompanionPolicy(enrollment));
   const address = await server.start();
   try {

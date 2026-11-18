@@ -1,6 +1,6 @@
 # Implementation Status
 
-Status: M0 and M1 acceptance complete; M2 implementation in progress | 2026-11-16
+Status: M0 and M1 acceptance complete, with documented gaps; M2 implementation in progress | 2026-11-18
 
 The current architectural decisions are recorded in `docs/DECISIONS.md` (ADR-008 through
 ADR-012). They are accepted constraints for this milestone, not evidence that the related
@@ -137,8 +137,13 @@ Validated locally on Windows with Node 24.21.0:
    timing issue in the smoke harness, not yet root-caused.
 
 1. Keep the isolated node-pty ConPTY cleanup diagnostic documented until an upstream-safe
-   suppression or replacement is validated.
+   suppression or replacement is validated. The supervisor now installs a fork guard so
+   node-pty's `conpty_console_list_agent` does not inherit `node --test` flags and fail
+   the parent test file after a clean dispose.
 
-The current reducer records presentation state only. It does not yet resolve an anchor
-against a persisted layout, clamp missing displays, or provide durable session, Electron,
-or remote-connection behavior; those remain unimplemented M0 experiments.
+The panel reducer is still presentation-only, but SnapBack anchor resolution, SQLite
+layout persistence, and desktop reload recovery are implemented and tested as described
+above. What remains unclaimed: PTY survival across a GUI or supervisor crash (the
+supervisor still runs in Electron main; extraction is a planned later milestone), a
+Metro (or other) docking/pop-out UI, and the WebContentsView dock/float/park matrix
+in issue #3.

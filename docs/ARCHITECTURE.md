@@ -1,9 +1,9 @@
 # Architecture — Hybrid Control Plane
-Status: Proposed; implementation not yet validated.
+Status: Laboratory implementation in progress. Demonstrated boundaries are recorded in `docs/IMPLEMENTATION-STATUS.md` and `docs/FEASIBILITY-MATRIX.md`; do not read this diagram as a claim that every box is already running.
 
 ## Logical deployment
 ```
-Windows Xenos                                  Trusted remote browser
+Primary Windows host                            Trusted remote browser
 ┌────────────────────────────┐               ┌────────────────────┐
 │ Electron shell             │               │ React web client   │
 │ Dockview / browser adapter │               │ terminal/RDP views │

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PtySupervisor, type AttachmentMode, type PtyAttachment } from "@nexus/host-agent/supervisor";
@@ -21,7 +22,16 @@ let metadataStore: MetadataStore;
 let companion: CompanionService | null = null;
 let companionTokenRevealed = false;
 let companionNetworkWarning: string | null = null;
-const companionHostId = "xenos-windows";
+
+/** Runtime identity only; never a committed machine name. */
+function runtimeHostIdentity(hostname = os.hostname()): { hostId: string; displayName: string } {
+  const displayName = hostname.trim() || "Local host";
+  const hostId = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "local-host";
+  return { hostId, displayName };
+}
+
+const companionHost = runtimeHostIdentity();
+const companionHostId = companionHost.hostId;
 const demoSessionId = "desktop-demo-session";
 const attachments = new Map<string, { sessionId: string; owner: WebContents; handle: PtyAttachment }>();
 const writerBySession = new Map<string, string>();
@@ -488,7 +498,7 @@ app.whenReady().then(async () => {
     companionNetworkWarning = loaded.warning;
     const startWith = (network: CompanionNetworkConfig): Promise<CompanionService> => startCompanionService({
       hostId: companionHostId,
-      displayName: "Xenos Windows",
+      displayName: companionHost.displayName,
       readModel: createMetadataReadModel(metadataStore),
       outputSource: createSupervisorOutputSource(hostSupervisor, companionHostId),
       credentialsPath: path.join(app.getPath("userData"), "companion-credentials.json"),

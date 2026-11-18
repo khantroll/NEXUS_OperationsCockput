@@ -5,8 +5,10 @@ import { isIP } from "node:net";
  *  - local:   loopback only (default). Nothing else on the network can connect.
  *  - private: plain HTTP bound to ONE private address, meant for a Tailscale/WireGuard/LAN interface where the
  *             tunnel provides encryption. Peers outside private/CGNAT/loopback ranges are refused.
- *  - https:   TLS with a certificate you supply; for exposure beyond a private network (e.g. a third-party
- *             service or a public server). Authentication and rate limits still apply to every request.
+ *  - https:   TLS with a certificate you supply. This is experimental and outside v0.1 non-goals
+ *             (no broad public internet exposure). The config file must also set
+ *             "experimentalPublicHttps": true; otherwise parsing fails and the desktop falls back to local.
+ *             Authentication and rate limits still apply to every request.
  */
 export type CompanionNetworkConfig =
   | { mode: "local"; port?: number }
@@ -55,6 +57,9 @@ export function parseCompanionNetworkConfig(text: string): ParsedNetworkConfig {
       return { config: { mode: "private", ...(typeof bind === "string" ? { bind } : {}), ...(raw["allowLan"] === true ? { allowLan: true } : {}), ...withPort }, error: null };
     }
     case "https": {
+      if (raw["experimentalPublicHttps"] !== true) {
+        return { config: null, error: "https mode is experimental and outside v0.1 non-goals; set \"experimentalPublicHttps\": true to opt in. Default is local (loopback); use private mode for Tailscale/WireGuard" };
+      }
       const { certFile, keyFile, publicHost } = raw;
       if (typeof certFile !== "string" || !certFile || typeof keyFile !== "string" || !keyFile) return { config: null, error: "https mode needs certFile and keyFile" };
       if (typeof publicHost !== "string" || !/^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/.test(publicHost)) {

@@ -1,16 +1,16 @@
 # Development Roadmap
-Status: M2 started on `feature/m0-foundation`. Milestones are gated on verified evidence, not
-calendar estimates.
+Status: M0 and M1 accepted on `feature/m0-foundation` with documented gaps; M2 in progress.
+Milestones are gated on verified evidence, not calendar estimates.
 
-## M0 — Foundation and feasibility [IN PROGRESS]
+## M0 — Foundation and feasibility [COMPLETE, with documented gaps]
 - Define package boundaries and threat model; TypeScript monorepo, formatting/lint/typecheck and Windows/Linux CI.
-- Electron + React + Dockview proof: split tabs, floating pane, independent native pop-out, serialize/restore.
-- Host-owned Windows ConPTY proof: 2 PTYs, session registry and attach/detach, process survives **desktop UI crash**.
+- Electron + React laboratory shell with Park/Summon/SnapBack and layout serialize/restore. Dockview was not adopted; Metro is the next UI target.
+- Host-owned Windows ConPTY proof: 2 PTYs, session registry and attach/detach; process survives **renderer reload**, not a GUI/main-process crash (supervisor still runs in Electron main).
 - Browser renderer proof: regular test page + live counter + scroll state, move/park/undock across native windows; publish compatibility matrix.
 - ADRs for ambiguous technical choices. No credentials or production hosts required.
 **Exit:** executable laboratory + automated lifecycle evidence and documented limitations.
 
-## M1 — Useful local cockpit
+## M1 — Useful local cockpit [COMPLETE]
 - Workspace navigation; projects; session shelf; keyboard Summon/SnapBack and Set Home.
 - Stable IDs, layout revisioning, SQLite storage, recovery and process states.
 - Claude Code/Codex CLI profile launchers with configurable workdir (no secrets in config).
@@ -18,7 +18,7 @@ calendar estimates.
 - Portable import/export of **redacted** layout metadata.
 **Exit:** operate two real agent terminals while moving/parking windows and restarting desktop UI with no duplicate processes.
 
-## M2 — Trusted remote companion
+## M2 — Trusted remote companion [IN PROGRESS]
 - M2.0 capability boundary: added a deterministic provider registry for ChatGPT, Claude, Gemini,
   Codex, SSH, VNC, and RDP launch modes. It stores only non-secret capability metadata; no
   credentials or connection targets are accepted. This is not remote access or authentication.
@@ -99,9 +99,11 @@ calendar estimates.
 - M2.12 reachability modes (owner decision: all three must be possible). `companion-network.json` in the app's
   userData folder selects: `local` (default, loopback only), `private` (plain HTTP bound to one private address
   for a Tailscale/WireGuard/LAN interface; with no `bind` the machine's Tailscale 100.64.0.0/10 address is
-  auto-detected; peers outside private ranges are refused), or `https` (TLS using your `certFile`/`keyFile` and a
-  `publicHost` name, for exposure beyond a private network; any peer may connect but the token and per-source rate
-  limits still gate every request). Hardening from the security review: a global auth-attempt ceiling applied
+  auto-detected; peers outside private ranges are refused), or `https` (experimental, outside v0.1 non-goals: TLS using your `certFile`/`keyFile` and a
+  `publicHost` name, for exposure beyond a private network). `https` is accepted from `companion-network.json` only
+  when `"experimentalPublicHttps": true` is also set; otherwise the desktop falls back to local with a warning.
+  Any peer may connect in this mode, but the token and per-source rate
+  limits still gate every request. Default remains loopback; the supported remote path is private/Tailscale. Hardening from the security review: a global auth-attempt ceiling applied
   before the expensive token hash (IPv6 sources grouped by /64), per-source connection caps, short handshake/header
   timeouts, disallowed peers dropped at connect time, fixed error text. `private` mode refuses plain-LAN binds
   (10.x/192.168.x/172.16-31.x) unless `"allowLan": true`, because the token would cross the LAN unencrypted;
@@ -112,6 +114,12 @@ calendar estimates.
   each mode (auto-detected this machine's Tailscale address). Not verified: a client on another machine.
 - M2.13 provider probe: ChatGPT, Claude and Gemini all load and render their sign-in UI in a top-level Electron view and all refuse iframes; see the Provider probe in FEASIBILITY-MATRIX.md. Sign-in inside the view is untested.
 **Exit:** remote client attaches to existing authorized terminal without exposing generic unauthenticated exec.
+
+## Mx — Extract the host supervisor from Electron main [PLANNED]
+- Move PTY ownership into a process (or service) that can outlive the desktop GUI.
+- Prove attach after a **GUI / main-process crash**, not only after a renderer reload.
+- Until then, recovery after a desktop restart stays `unknown` / `relaunch-only`. Do not claim PTY survival across a GUI crash.
+**Exit:** a documented experiment showing the same session ID and PID after a deliberate GUI/main crash, or an explicit decision to keep relaunch-only.
 
 ## M3 — Project workspaces and integrations
 - Project recall and context packages; GitHub overview, CI/status adapters.
@@ -128,7 +136,7 @@ calendar estimates.
 ## Sequenced issue backlog
 1. ADR + threat model
 2. Monorepo + CI + contracts
-3. Dockview layout spike
+3. Metro layout spike (Dockview was the original item; Metro is now the chosen UI direction)
 4. Host-owned ConPTY supervisor spike
 5. WebContentsView persistence/reparent spike
 6. SnapBack core state machine + tests

@@ -13,7 +13,7 @@ Users currently operate many disconnected AI CLIs, AI web chats, SSH sessions, r
 6. A browser companion reattaches to remote backends; it never pretends to migrate local browser execution state.
 
 ## Personas and workflows
-- Primary operator on Windows workstation Xenos; frequent use of Claude Code, Codex CLI, PowerShell, and SSH.
+- Primary operator on a Windows workstation; frequent use of Claude Code, Codex CLI, PowerShell, and SSH.
 - Remote operator accessing persistent host sessions from another trusted computer.
 - Developer switching between project-centric collections: Conclave, Tank, Hail, AI Skills, infrastructure.
 

@@ -111,7 +111,7 @@ export class PtySupervisor {
       : maxOutputBytesOrOptions;
     this.maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
     this.metadata = options.metadata;
-    this.hostId = options.hostId ?? "windows-xenos";
+    this.hostId = options.hostId ?? "local-host";
     this.hostBootEpoch = options.hostBootEpoch ?? `supervisor-${process.pid}`;
     if (!Number.isInteger(this.maxOutputBytes) || this.maxOutputBytes < 1) {
       throw new RangeError("maxOutputBytes must be a positive integer");

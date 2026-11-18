@@ -5,7 +5,7 @@ import { HostEnrollmentRegistry } from "../src/host-enrollment.js";
 
 test("companion policy grants bounded private read capabilities", () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const policy = new CompanionPolicy(enrollment, 60_000);
   const result = policy.authorize({
     hostId: issued.host.hostId,
@@ -24,7 +24,7 @@ test("companion policy grants bounded private read capabilities", () => {
 
 test("companion policy rejects public, invalid, and malformed requests", () => {
   const enrollment = new HostEnrollmentRegistry();
-  const issued = enrollment.enroll("host-xenos", "Windows Xenos", "2026-11-16T00:00:00.000Z");
+  const issued = enrollment.enroll("host-test", "Test Host", "2026-11-16T00:00:00.000Z");
   const policy = new CompanionPolicy(enrollment);
   assert.deepEqual(policy.authorize({ hostId: issued.host.hostId, clientId: "client", enrollmentToken: issued.enrollmentToken, network: "public", capability: "read-workspace" }, "2026-11-16T01:00:00.000Z"), { accepted: false, reason: "public-network" });
   assert.deepEqual(policy.authorize({ hostId: issued.host.hostId, clientId: "client", enrollmentToken: "wrong", network: "private", capability: "read-workspace" }, "2026-11-16T01:00:00.000Z"), { accepted: false, reason: "invalid-credentials" });
