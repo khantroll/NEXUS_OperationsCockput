@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./layout": "./src/layout.ts"
+    "./layout": "./src/layout.ts",
+    "./metro-shelf": "./src/metro-shelf.ts"
   }
 }
