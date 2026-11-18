@@ -8,7 +8,8 @@ export interface MetroShelf {
 /**
  * Metro layout rule: live panels occupy the workspace grid; parked panels sit
  * in a separate shelf as individual items. SnapBack is a per-panel action on a
- * parked item, never a global "restore all".
+ * parked item, never a global "restore all". Double-click is the primary
+ * restore gesture; a per-tile Restore control is the accessible secondary.
  */
 export function partitionMetroPanels(panels: readonly PanelRecord[]): MetroShelf {
   const live: PanelRecord[] = [];

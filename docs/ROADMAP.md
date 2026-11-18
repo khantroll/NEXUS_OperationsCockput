@@ -1,10 +1,10 @@
 # Development Roadmap
-Status: M0 and M1 accepted on `feature/m0-foundation` with documented gaps; M2 in progress.
+Status: M0 and M1 accepted with documented gaps; Metro cockpit is in progress on top of `main`; M2 in progress.
 Milestones are gated on verified evidence, not calendar estimates.
 
 ## M0 — Foundation and feasibility [COMPLETE, with documented gaps]
 - Define package boundaries and threat model; TypeScript monorepo, formatting/lint/typecheck and Windows/Linux CI.
-- Electron + React laboratory shell with Park/Summon/SnapBack and layout serialize/restore. Dockview was not adopted; Metro is the next UI target.
+- Electron + React laboratory shell with Park/Summon/SnapBack and layout serialize/restore. Dockview was not adopted; Metro is the chosen UI and a first spike is on `main`.
 - Host-owned Windows ConPTY proof: 2 PTYs, session registry and attach/detach; process survives **renderer reload**, not a GUI/main-process crash (supervisor still runs in Electron main).
 - Browser renderer proof: regular test page + live counter + scroll state, move/park/undock across native windows; publish compatibility matrix.
 - ADRs for ambiguous technical choices. No credentials or production hosts required.
@@ -121,6 +121,12 @@ Milestones are gated on verified evidence, not calendar estimates.
 - Until then, recovery after a desktop restart stays `unknown` / `relaunch-only`. Do not claim PTY survival across a GUI crash.
 **Exit:** a documented experiment showing the same session ID and PID after a deliberate GUI/main crash, or an explicit decision to keep relaunch-only.
 
+## Metro cockpit [IN PROGRESS]
+- The first Metro spike is on `main`: a workspace switcher over the real registry, a live tile grid, a parked shelf, and per-window SnapBack. It does not seed concept names (Conclave/Tank/Home Lab) or add Dockview/native pop-out.
+- Restore gesture (decided): double-click on a parked tile is primary. A per-tile Restore button, and a right-click context action on that same tile, is the accessible secondary. There is no restore-all.
+- Parked live previews: throttled snapshots of the terminal text buffer (default 3s, configurable via `NEXUS_METRO_PREVIEW_INTERVAL_MS`), paused when the window is hidden or minimized, with a concurrency cap (`NEXUS_METRO_PREVIEW_CONCURRENCY`, default 2) and a static last-snapshot fallback. This is not a live xterm in every parked tile, and it is not `webContents.capturePage` (deferred until browser/WebContentsView panels exist). Set `NEXUS_METRO_PREVIEW_TRACE=1` to log capture timings.
+- Workspaces: File > New Workspace... (Ctrl/Cmd+Shift+N) prompts for a name; dragging a live or parked tile onto the switcher moves it into that workspace; dropping onto the New workspace target prompts for a name and creates a workspace containing that panel. Creates and moves persist through the existing SQLite workspace/panel registry. Rename and empty-workspace delete UI are not in this slice.
+
 ## M3 — Project workspaces and integrations
 - Project recall and context packages; GitHub overview, CI/status adapters.
 - Read-only adapters: Conclave, Tank, OpenMausBot, Hail, AI Skills.
@@ -136,7 +142,7 @@ Milestones are gated on verified evidence, not calendar estimates.
 ## Sequenced issue backlog
 1. ADR + threat model
 2. Monorepo + CI + contracts
-3. Metro layout spike (Dockview was the original item; Metro is now the chosen UI direction)
+3. Metro layout spike (landed on `main`; follow-up: cheap parked previews and workspace create/move)
 4. Host-owned ConPTY supervisor spike
 5. WebContentsView persistence/reparent spike
 6. SnapBack core state machine + tests

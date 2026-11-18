@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { CommandEnvelope, PanelCommand, PanelRecord, WorkspaceRecord } from "../../../packages/contracts/src/index.js";
 import { applyPanelCommand } from "../../../packages/core/src/lifecycle.js";
 import { metroWorkspaceTiles, partitionMetroPanels } from "../../../packages/core/src/metro-shelf.js";
+import { livePreviewSet, summarizePreviewCost, tickPreviewScheduler } from "../../../packages/core/src/metro-preview.js";
+import { applyWorkspaceDrop, createWorkspaceRecord, nextWorkspaceName } from "../../../packages/core/src/metro-workspace.js";
+import { appendPanelPreview, readPanelPreview, seedPanelPreview } from "./preview-buffers.js";
 import { TerminalView, discardTerminalBuffer, routeTerminalData } from "./terminal-view.js";
 
 declare global {
@@ -22,7 +25,11 @@ declare global {
       onData: (listener: (payload: { attachmentId: string; data: string }) => void) => () => void;
     };
     nexusLayout: { save: (panels: PanelRecord[]) => Promise<void>; load: (panelId: string) => Promise<PanelRecord | null>; list: (workspaceId: string) => Promise<PanelRecord[]>; export: (workspaceId: string) => Promise<string>; import: (serialized: string) => Promise<unknown> };
-    nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void> };
+    nexusWorkspace: { list: () => Promise<WorkspaceRecord[]>; save: (workspace: WorkspaceRecord) => Promise<void>; onCreateRequested: (listener: () => void) => () => void };
+    nexusMetro: {
+      previewConfig: () => Promise<{ intervalMs: number; maxConcurrent: number; trace: boolean }>;
+      onWindowVisibility: (listener: (payload: { hidden: boolean }) => void) => () => void;
+    };
     nexusSsh: {
       list: () => Promise<{ path: string; errors: string[]; profiles: Array<{ profileId: string; name: string; host: string; user?: string; port?: number; remoteTmuxSession?: string }> }>;
       start: (profileId: string) => Promise<{ sessionId: string; pid: number; status: string; outputBytes: number; name: string }>;
@@ -70,6 +77,14 @@ function App(): React.JSX.Element {
   });
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([]);
   const [panelsByWorkspace, setPanelsByWorkspace] = useState<ReadonlyMap<string, PanelRecord[]>>(new Map());
+  const [previewConfig, setPreviewConfig] = useState({ intervalMs: 3000, maxConcurrent: 2, trace: false });
+  const [osWindowHidden, setOsWindowHidden] = useState(false);
+  const [pageHidden, setPageHidden] = useState(document.hidden);
+  const [previewSnapshots, setPreviewSnapshots] = useState<Record<string, string>>({});
+  const [workspacePrompt, setWorkspacePrompt] = useState<{ name: string; panelId?: string; error?: string } | null>(null);
+  const lastPreviewCaptureAt = useRef(new Map<string, number>());
+  const previewCostSamples = useRef<number[]>([]);
+  const previewRouteRef = useRef({ panelId: initialPanel.panelId, attachmentId: null as string | null, profiles: [] as ProfilePanel[] });
   const [companionInfo, setCompanionInfo] = useState<Awaited<ReturnType<Window["nexusCompanion"]["info"]>>>(null);
   const [companionDismissed, setCompanionDismissed] = useState(false);
   const [sshInfo, setSshInfo] = useState<Awaited<ReturnType<Window["nexusSsh"]["list"]>> | null>(null);
@@ -103,6 +118,7 @@ function App(): React.JSX.Element {
     persistPanel(nextPanel);
     setAttachmentId(attached.attachmentId);
     setHostOutput(attached.replay);
+    seedPanelPreview(nextPanel.panelId, attached.replay);
   };
   const disconnectHost = async (): Promise<void> => {
     if (attachmentId) await window.nexusHost.detach(attachmentId);
@@ -141,6 +157,7 @@ function App(): React.JSX.Element {
       homeAnchor: { ...initialPanel.homeAnchor, workspaceId: workspace.workspaceId, groupId: "profiles", tabIndex: profilePanels.length, layoutRevision: 1 },
       revision: 1,
     };
+    seedPanelPreview(profilePanel.panelId, attached.replay);
     setProfilePanels((current) => [...current, { panel: profilePanel, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable, label, ...(profile === undefined ? {} : { profile }) }]);
     void window.nexusLayout.save([profilePanel]).catch(() => undefined);
     setSessions((current) => [...current.filter((candidate) => candidate.sessionId !== session.sessionId), {
@@ -158,6 +175,7 @@ function App(): React.JSX.Element {
         await window.nexusHost.detach(entry.attachmentId);
         await window.nexusHost.restartProfile(entry.panel.sessionId, entry.profile);
         const attached = await attachInteractive(entry.panel.sessionId);
+        seedPanelPreview(entry.panel.panelId, attached.replay);
         setProfilePanels((current) => current.map((candidate) => candidate.panel.panelId === entry.panel.panelId
           ? { ...candidate, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable } : candidate));
         setSessions((current) => current.map((candidate) => candidate.sessionId === entry.panel.sessionId ? { ...candidate, process: "running", transport: "connected", recovery: "none" } : candidate));
@@ -232,6 +250,7 @@ function App(): React.JSX.Element {
         void Promise.all(savedPanels.filter((candidate) => candidate.panelId !== "demo-panel").map(async (savedPanel) => {
           try {
             const attached = await attachInteractive(savedPanel.sessionId);
+            seedPanelPreview(savedPanel.panelId, attached.replay);
             const recovered: ProfilePanel = { panel: savedPanel, attachmentId: attached.attachmentId, output: attached.replay, writable: attached.writable, label: "Recovered terminal" };
             setProfilePanels((current) => [...current, recovered]);
           } catch { /* session is gone; leave the saved panel out */ }
@@ -269,6 +288,30 @@ function App(): React.JSX.Element {
   }, [attachmentId, layoutLoaded]);
 
   useEffect(() => {
+    void window.nexusMetro.previewConfig().then(setPreviewConfig).catch(() => undefined);
+  }, []);
+  useEffect(() => window.nexusWorkspace.onCreateRequested(() => {
+    setWorkspacePrompt({ name: nextWorkspaceName(workspaces) });
+  }), [workspaces]);
+  useEffect(() => window.nexusMetro.onWindowVisibility((payload) => setOsWindowHidden(payload.hidden)), []);
+  useEffect(() => {
+    const sync = (): void => setPageHidden(document.hidden);
+    document.addEventListener("visibilitychange", sync);
+    sync();
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+  previewRouteRef.current = { panelId: panel.panelId, attachmentId, profiles: profilePanels };
+  useEffect(() => window.nexusHost.onData((payload) => {
+    const route = previewRouteRef.current;
+    if (payload.attachmentId === route.attachmentId) appendPanelPreview(route.panelId, payload.data);
+    const entry = route.profiles.find((item) => item.attachmentId === payload.attachmentId);
+    if (entry) appendPanelPreview(entry.panel.panelId, payload.data);
+  }), []);
+  useEffect(() => {
+    if (hostOutput) seedPanelPreview(panel.panelId, hostOutput);
+  }, [hostOutput, panel.panelId]);
+
+  useEffect(() => {
     const currentPanels = [panel, ...profilePanels.map((entry) => entry.panel)].filter((item) => item.workspaceId === workspace.workspaceId);
     setPanelsByWorkspace((current) => new Map(current).set(workspace.workspaceId, currentPanels));
   }, [panel, profilePanels, workspace.workspaceId]);
@@ -280,6 +323,128 @@ function App(): React.JSX.Element {
   ]);
   const tiles = metroWorkspaceTiles(workspaces, workspace.workspaceId, panelsByWorkspace);
   const tileColors = ["#0072C6", "#00A4A6", "#A7008F", "#DC572E", "#8CBD18", "#F0A30A"];
+
+
+  const previewPaused = osWindowHidden || pageHidden;
+  const parkedIds = shelf.parked.map((item) => item.panelId);
+  const livePreviews = livePreviewSet(parkedIds, previewConfig.maxConcurrent, { paused: false, windowHidden: previewPaused });
+
+  useEffect(() => {
+    const capture = (): void => {
+      const due = tickPreviewScheduler({
+        parkedPanelIds: parkedIds,
+        lastCaptureAt: lastPreviewCaptureAt.current,
+        now: Date.now(),
+        intervalMs: previewConfig.intervalMs,
+        cap: previewConfig.maxConcurrent,
+        paused: false,
+        windowHidden: previewPaused,
+      });
+      if (due.length === 0) return;
+      const started = performance.now();
+      setPreviewSnapshots((current) => {
+        const next = { ...current };
+        for (const panelId of due) next[panelId] = readPanelPreview(panelId) || current[panelId] || "";
+        return next;
+      });
+      const elapsed = performance.now() - started;
+      const capturedAt = Date.now();
+      for (const panelId of due) lastPreviewCaptureAt.current.set(panelId, capturedAt);
+      previewCostSamples.current = [...previewCostSamples.current, elapsed].slice(-20);
+      if (previewConfig.trace) {
+        console.log("metro preview capture", { due, intervalMs: previewConfig.intervalMs, cap: previewConfig.maxConcurrent, ...summarizePreviewCost(previewCostSamples.current) });
+      }
+    };
+    capture();
+    const timer = window.setInterval(capture, Math.min(previewConfig.intervalMs, 1000));
+    return () => window.clearInterval(timer);
+  }, [parkedIds.join(","), previewPaused, previewConfig.intervalMs, previewConfig.maxConcurrent, previewConfig.trace]);
+
+  function openWorkspace(record: WorkspaceRecord): void {
+    const next = { ...record, lastOpenedAt: new Date().toISOString() };
+    setWorkspace(next);
+    void window.nexusWorkspace.save(next).catch(() => undefined);
+  }
+
+  function applyMovedPanel(nextPanel: PanelRecord): void {
+    if (nextPanel.panelId === panel.panelId) {
+      setPanel(nextPanel);
+      persistPanel(nextPanel);
+      return;
+    }
+    setProfilePanels((current) => current.map((entry) => entry.panel.panelId === nextPanel.panelId ? { ...entry, panel: nextPanel } : entry));
+    void window.nexusLayout.save([nextPanel]).catch(() => undefined);
+  }
+
+  function findPanel(panelId: string): PanelRecord | undefined {
+    if (panel.panelId === panelId) return panel;
+    return profilePanels.find((entry) => entry.panel.panelId === panelId)?.panel;
+  }
+
+  function submitWorkspacePrompt(): void {
+    if (!workspacePrompt) return;
+    try {
+      const createdAt = new Date().toISOString();
+      if (workspacePrompt.panelId) {
+        const source = findPanel(workspacePrompt.panelId);
+        if (!source) {
+          setWorkspacePrompt(null);
+          return;
+        }
+        const result = applyWorkspaceDrop(source, {
+          kind: "new",
+          name: workspacePrompt.name,
+          workspaceId: crypto.randomUUID(),
+          now: createdAt,
+        }, workspaces);
+        if (result.workspace) {
+          setWorkspaces(result.workspaces);
+          void window.nexusWorkspace.save(result.workspace).catch(() => undefined);
+          applyMovedPanel(result.panel);
+          openWorkspace(result.workspace);
+        }
+      } else {
+        const created = createWorkspaceRecord({
+          name: workspacePrompt.name,
+          now: createdAt,
+          workspaceId: crypto.randomUUID(),
+        });
+        setWorkspaces((current) => current.some((item) => item.workspaceId === created.workspaceId) ? current : [...current, created]);
+        void window.nexusWorkspace.save(created).catch(() => undefined);
+        openWorkspace(created);
+      }
+      setWorkspacePrompt(null);
+    } catch (error) {
+      setWorkspacePrompt({ ...workspacePrompt, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  function dropOnWorkspace(panelId: string, target: "new" | string): void {
+    const source = findPanel(panelId);
+    if (!source) return;
+    if (target === "new") {
+      setWorkspacePrompt({ name: nextWorkspaceName(workspaces), panelId });
+      return;
+    }
+    try {
+      applyMovedPanel(applyWorkspaceDrop(source, { kind: "existing", workspaceId: target }, workspaces).panel);
+    } catch { /* invalid drop */ }
+  }
+
+  const panelDragType = "application/x-nexus-panel";
+  function startPanelDrag(event: React.DragEvent, panelId: string): void {
+    event.dataTransfer.setData(panelDragType, panelId);
+    event.dataTransfer.setData("text/plain", panelId);
+    event.dataTransfer.effectAllowed = "move";
+  }
+  function acceptPanelDrop(event: React.DragEvent): void {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+  function droppedPanelId(event: React.DragEvent): string | null {
+    event.preventDefault();
+    return event.dataTransfer.getData(panelDragType) || event.dataTransfer.getData("text/plain") || null;
+  }
 
   function snapBackPanel(target: PanelRecord): void {
     if (target.panelId === panel.panelId) dispatch({ op: "snapBack", panelId: target.panelId });
@@ -296,10 +461,13 @@ function App(): React.JSX.Element {
     return React.createElement("article", {
       key: target.panelId,
       style: parked ? styles.parkedTile : styles.liveTile,
+      draggable: true,
       "data-panel-id": target.panelId,
       "data-panel-placement": target.placement,
       "data-panel-revision": target.revision,
+      onDragStart: (event: React.DragEvent) => startPanelDrag(event, target.panelId),
       onDoubleClick: parked ? () => snapBackPanel(target) : undefined,
+      onContextMenu: parked ? (event: React.MouseEvent) => { event.preventDefault(); snapBackPanel(target); } : undefined,
     },
       React.createElement("div", { style: styles.tileHeader },
         React.createElement("div", null,
@@ -332,14 +500,35 @@ function App(): React.JSX.Element {
           type: "button",
           style: { ...styles.workspaceTile, background: tileColors[index % tileColors.length], outline: tile.current ? "3px solid #fff" : "none" },
           "data-current": tile.current ? "true" : "false",
+          "data-drop-target": "workspace",
+          "data-workspace-id": tile.workspaceId,
+          onDragOver: acceptPanelDrop,
+          onDrop: (event: React.DragEvent) => {
+            const panelId = droppedPanelId(event);
+            if (panelId) dropOnWorkspace(panelId, tile.workspaceId);
+          },
           onClick: () => {
             const record = workspaces.find((item) => item.workspaceId === tile.workspaceId);
-            if (record) setWorkspace({ ...record, lastOpenedAt: new Date().toISOString() });
+            if (record) openWorkspace(record);
           },
         },
           React.createElement("span", { style: styles.workspaceTileName }, tile.name),
           React.createElement("span", { style: styles.workspaceTileMeta }, tile.liveCount + " live · " + tile.parkedCount + " parked"),
         )),
+      React.createElement("button", {
+        type: "button",
+        style: styles.newWorkspaceTile,
+        "data-drop-target": "new-workspace",
+        onClick: () => setWorkspacePrompt({ name: nextWorkspaceName(workspaces) }),
+        onDragOver: acceptPanelDrop,
+        onDrop: (event: React.DragEvent) => {
+          const panelId = droppedPanelId(event);
+          if (panelId) dropOnWorkspace(panelId, "new");
+        },
+      },
+        React.createElement("span", { style: styles.workspaceTileName }, "New workspace"),
+        React.createElement("span", { style: styles.workspaceTileMeta }, "Drop a tile here, or click to name one"),
+      ),
     ),
     React.createElement(
       "section",
@@ -393,10 +582,16 @@ function App(): React.JSX.Element {
           : shelf.parked.map((item) => {
             const entry = visibleProfiles.find((candidate) => candidate.panel.panelId === item.panelId);
             const title = item.panelId === panel.panelId ? "Terminal presentation" : (entry?.label ?? item.panelId);
+            const mode = previewPaused ? "paused" : (livePreviews.includes(item.panelId) ? "live" : "static");
+            const snapshot = previewSnapshots[item.panelId] || readPanelPreview(item.panelId);
+            const placeholder = mode === "paused" ? "Session still live · preview paused" : "Session still live · preview pending";
             return renderPanelChrome(item, title,
-              React.createElement("div", { style: styles.controls },
-                React.createElement("button", { onClick: () => snapBackPanel(item) }, "Restore"),
-                React.createElement("span", { style: styles.muted }, "Returns to " + item.homeAnchor.groupId),
+              React.createElement(React.Fragment, null,
+                React.createElement("pre", { style: styles.preview, "data-preview-mode": mode }, snapshot || placeholder),
+                React.createElement("div", { style: styles.controls },
+                  React.createElement("button", { onClick: (event: React.MouseEvent) => { event.stopPropagation(); snapBackPanel(item); } }, "Restore"),
+                  React.createElement("span", { style: styles.muted }, "Double-click to restore · returns to " + item.homeAnchor.groupId),
+                ),
               ),
             );
           }),
@@ -446,6 +641,27 @@ function App(): React.JSX.Element {
         ) : null,
       ),
     ),
+    workspacePrompt ? React.createElement("div", { style: styles.modalBackdrop, role: "dialog", "aria-modal": "true", "aria-label": "New workspace" },
+      React.createElement("form", {
+        style: styles.modal,
+        onSubmit: (event: React.FormEvent) => { event.preventDefault(); submitWorkspacePrompt(); },
+      },
+        React.createElement("div", { style: styles.sectionLabel }, "NEW WORKSPACE"),
+        React.createElement("input", {
+          autoFocus: true,
+          value: workspacePrompt.name,
+          "aria-label": "Workspace name",
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) => setWorkspacePrompt({ ...workspacePrompt, name: event.target.value, error: undefined }),
+          style: styles.modalInput,
+        }),
+        workspacePrompt.error ? React.createElement("div", { style: styles.error }, workspacePrompt.error) : null,
+        workspacePrompt.panelId ? React.createElement("div", { style: styles.muted }, "The dropped window will move into this workspace.") : null,
+        React.createElement("div", { style: styles.controls },
+          React.createElement("button", { type: "submit" }, "Create"),
+          React.createElement("button", { type: "button", onClick: () => setWorkspacePrompt(null) }, "Cancel"),
+        ),
+      ),
+    ) : null,
   );
 }
 
@@ -457,6 +673,7 @@ const styles: Record<string, React.CSSProperties> = {
   badge: { color: "#111111", background: "#ffffff", padding: "6px 12px", fontSize: 12, fontWeight: 600 },
   switcher: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" },
   workspaceTile: { border: "none", color: "#fff", minWidth: 160, minHeight: 72, padding: "12px 14px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
+  newWorkspaceTile: { border: "2px dashed #666", color: "#fff", background: "transparent", minWidth: 160, minHeight: 72, padding: "12px 14px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
   workspaceTileName: { fontSize: 18, fontWeight: 600 },
   workspaceTileMeta: { fontSize: 11, opacity: 0.9 },
   workspace: { display: "grid", gridTemplateColumns: "1fr 300px", gap: 12, minHeight: 620 },
@@ -476,6 +693,10 @@ const styles: Record<string, React.CSSProperties> = {
   tileState: { fontSize: 12, marginTop: 4, textTransform: "uppercase", letterSpacing: 1, opacity: 0.9 },
   revision: { color: "#fff", fontSize: 12, opacity: 0.8 },
   terminal: { margin: 0, minHeight: 180, padding: 16, color: "#e8ffbf", background: "#0a0a0a", fontFamily: "Cascadia Code, Consolas, monospace", lineHeight: 1.6, fontSize: 13 },
+  preview: { margin: 0, minHeight: 88, maxHeight: 120, overflow: "hidden", padding: "8px 10px", color: "#d8f5e6", background: "#0a0a0a", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 11, lineHeight: 1.4, pointerEvents: "none", whiteSpace: "pre-wrap", wordBreak: "break-word" },
+  modalBackdrop: { position: "fixed", inset: 0, background: "#00000099", display: "grid", placeItems: "center", zIndex: 20 },
+  modal: { background: "#1b1b1b", padding: 24, minWidth: 320, display: "grid", gap: 12, border: "1px solid #444" },
+  modalInput: { padding: "8px 10px", fontSize: 16, background: "#111", color: "#fff", border: "1px solid #555" },
   controls: { display: "flex", gap: 8, padding: 12, flexWrap: "wrap", background: "#0a0a0a" },
   profileControls: { display: "grid", gap: 8 },
 };

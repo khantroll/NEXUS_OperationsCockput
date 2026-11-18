@@ -29,6 +29,19 @@ const layout = {
 const workspace = {
   list: () => ipcRenderer.invoke("nexus:workspace:list"),
   save: (record: unknown) => ipcRenderer.invoke("nexus:workspace:save", record),
+  onCreateRequested: (listener: () => void) => {
+    const wrapped = (): void => listener();
+    ipcRenderer.on("nexus:workspace:new", wrapped);
+    return () => ipcRenderer.removeListener("nexus:workspace:new", wrapped);
+  },
+};
+const metro = {
+  previewConfig: () => ipcRenderer.invoke("nexus:metro:preview-config"),
+  onWindowVisibility: (listener: (payload: { hidden: boolean }) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: { hidden: boolean }) => listener(payload);
+    ipcRenderer.on("nexus:window:visibility", wrapped);
+    return () => ipcRenderer.removeListener("nexus:window:visibility", wrapped);
+  },
 };
 const sessions = {
   list: () => ipcRenderer.invoke("nexus:session:list"),
@@ -51,6 +64,7 @@ contextBridge.exposeInMainWorld("nexusShell", {
 contextBridge.exposeInMainWorld("nexusHost", host);
 contextBridge.exposeInMainWorld("nexusLayout", layout);
 contextBridge.exposeInMainWorld("nexusWorkspace", workspace);
+contextBridge.exposeInMainWorld("nexusMetro", metro);
 contextBridge.exposeInMainWorld("nexusSessions", sessions);
 contextBridge.exposeInMainWorld("nexusCompanion", companion);
 contextBridge.exposeInMainWorld("nexusSsh", ssh);

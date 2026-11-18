@@ -10,8 +10,9 @@ The preload also exposes a narrow, read-only demo host bridge for starting or re
 to the main-process supervisor's demo session. It validates the renderer file origin and
 session/attachment identifiers; it does not expose arbitrary command execution.
 Workspace names are loaded and created through the same validated preload boundary and are
-stored as non-secret SQLite metadata; the renderer still uses one deterministic default
-workspace in this laboratory shell.
+stored as non-secret SQLite metadata. The Metro shell can create additional workspaces
+from File > New Workspace... or by dragging a tile onto the New workspace drop target,
+and can move tiles between existing workspaces; those records persist in the same registry.
 The session shelf also reads persisted non-secret session state so a relaunch-only record is
 visible without implying that its prior process is still alive.
 Terminal input is opt-in: renderer attachments default to read-only, only one write attachment

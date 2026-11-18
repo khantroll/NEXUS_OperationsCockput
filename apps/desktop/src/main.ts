@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import { parseSshProfileFile, resolveSshProfile } from "@nexus/host-agent/ssh-pr
 import { MetadataStore } from "@nexus/storage/metadata";
 import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, type WorkspaceRecord } from "@nexus/contracts";
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
+import { parsePreviewConcurrency, parsePreviewIntervalMs } from "@nexus/core/metro-preview";
 import { startCompanionService, type CompanionService } from "@nexus/integration/companion-service";
 import { parseCompanionNetworkConfig, type CompanionNetworkConfig } from "@nexus/integration/companion-network";
 import { createMetadataReadModel } from "@nexus/integration/metadata-read-model";
@@ -79,6 +80,45 @@ function isCliProfileRecord(value: unknown): value is CliProfileRecord {
     Array.isArray(profile.args) && profile.args.every((arg) => typeof arg === "string") &&
     (profile.cwd === undefined || typeof profile.cwd === "string") &&
     (() => { try { assertNonSecretCliArguments(profile.args); return true; } catch { return false; } })();
+}
+
+
+function metroPreviewConfig(): { intervalMs: number; maxConcurrent: number; trace: boolean } {
+  return {
+    intervalMs: parsePreviewIntervalMs(process.env.NEXUS_METRO_PREVIEW_INTERVAL_MS),
+    maxConcurrent: parsePreviewConcurrency(process.env.NEXUS_METRO_PREVIEW_CONCURRENCY),
+    trace: process.env.NEXUS_METRO_PREVIEW_TRACE === "1",
+  };
+}
+
+function installApplicationMenu(window: BrowserWindow): void {
+  const fileSubmenu: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: "New Workspace...",
+      accelerator: "CmdOrCtrl+Shift+N",
+      click: () => {
+        if (!window.isDestroyed()) window.webContents.send("nexus:workspace:new");
+      },
+    },
+    { type: "separator" },
+    process.platform === "darwin" ? { role: "close" } : { role: "quit" },
+  ];
+  const template: Electron.MenuItemConstructorOptions[] = [
+    { label: "File", submenu: fileSubmenu },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ];
+  if (process.platform === "darwin") {
+    template.unshift({ label: app.name, submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }] });
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function publishWindowVisibility(window: BrowserWindow): void {
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+  const hidden = window.isMinimized() || !window.isVisible();
+  window.webContents.send("nexus:window:visibility", { hidden });
 }
 
 function detachOwner(owner: WebContents): void {
@@ -313,6 +353,10 @@ function registerHostIpc(): void {
     if (!isWorkspaceRecord(workspace)) throw new Error("invalid workspace metadata");
     metadataStore.saveWorkspace(workspace);
   });
+  ipcMain.handle("nexus:metro:preview-config", (event) => {
+    assertRenderer(event);
+    return metroPreviewConfig();
+  });
   ipcMain.handle("nexus:session:list", (event) => {
     assertRenderer(event);
     return metadataStore.listSessions();
@@ -345,6 +389,13 @@ async function createWindow(): Promise<BrowserWindow> {
   // recovered terminal would silently come back read-only.
   window.webContents.on("did-start-loading", () => detachOwner(window.webContents));
   window.webContents.on("render-process-gone", () => detachOwner(window.webContents));
+  installApplicationMenu(window);
+  const publish = (): void => publishWindowVisibility(window);
+  window.on("minimize", publish);
+  window.on("restore", publish);
+  window.on("hide", publish);
+  window.on("show", publish);
+  window.webContents.on("did-finish-load", publish);
   await window.loadFile(rendererPath);
   return window;
 }
