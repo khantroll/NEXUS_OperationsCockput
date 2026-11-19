@@ -25,7 +25,7 @@ function finish(code) {
   finished = true;
   clearTimeout(timeout);
   if (child.exitCode === null) child.kill();
-  rmSync(userData, { recursive: true, force: true });
+  try { rmSync(userData, { recursive: true, force: true }); } catch { /* Electron may still hold the temp dir on Windows */ }
   process.exit(code);
 }
 

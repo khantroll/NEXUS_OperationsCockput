@@ -49,5 +49,5 @@ try {
   console.error(error);
   process.exit(1);
 } finally {
-  rmSync(userData, { recursive: true, force: true });
+  try { rmSync(userData, { recursive: true, force: true }); } catch { /* Electron may still hold the temp dir on Windows */ }
 }

@@ -475,7 +475,7 @@ async function runReloadSmoke(window: BrowserWindow): Promise<void> {
   const readOnlyWrite = await evaluate<string>("read-only input authorization", `window.nexusHost.write('${firstAttachment.attachmentId}', 'blocked').then(() => 'accepted').catch((error) => error.message)`);
   if (!readOnlyWrite.includes("read attachment cannot write")) throw new Error(`read-only attachment accepted input: ${readOnlyWrite}`);
   const layoutSessionId = `desktop-layout-smoke-${Date.now()}`;
-  const layoutPanelId = "profile-panel-" + layoutSessionId;
+  const layoutPanelId = "layout-smoke-panel";
   const layoutProfile = {
     profileId: "desktop-layout-smoke",
     name: "Desktop layout smoke",
