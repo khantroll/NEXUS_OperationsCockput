@@ -97,6 +97,13 @@ function App(): React.JSX.Element {
   const [previewSnapshots, setPreviewSnapshots] = useState<Record<string, string>>({});
   const [workspacePrompt, setWorkspacePrompt] = useState<{ name: string; panelId?: string; error?: string } | null>(null);
   const [showHiddenSessions, setShowHiddenSessions] = useState(false);
+  const [shellView, setShellView] = useState<"home" | "sessions" | "settings">("home");
+  const [clock, setClock] = useState(() => new Date().toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" }));
+  useEffect(() => {
+    const tick = (): void => setClock(new Date().toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" }));
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, []);
   const lastPreviewCaptureAt = useRef(new Map<string, number>());
   const previewCostSamples = useRef<number[]>([]);
   const previewRouteRef = useRef<TerminalEntry[]>([]);
@@ -306,7 +313,8 @@ function App(): React.JSX.Element {
   const visibleTerminals = terminals.filter((entry) => entry.panel.workspaceId === workspace.workspaceId);
   const shelf = partitionMetroPanels(visibleTerminals.map((entry) => entry.panel));
   const tiles = metroWorkspaceTiles(workspaces, workspace.workspaceId, panelsByWorkspace);
-  const tileColors = ["#0072C6", "#00A4A6", "#A7008F", "#DC572E", "#8CBD18", "#F0A30A"];
+  const tileColors = ["#00A4E8", "#00B3A4", "#2BB56A", "#0078D4", "#E4572E", "#C7A000"];
+  const parkedColors = ["#6B3FA0", "#008B9A", "#E4572E", "#0078D4", "#2BB56A", "#C7A000"];
   const previewPaused = osWindowHidden || pageHidden;
   const parkedIds = shelf.parked.map((item) => item.panelId);
   const livePreviews = livePreviewSet(parkedIds, previewConfig.maxConcurrent, { paused: false, windowHidden: previewPaused });
@@ -431,188 +439,266 @@ function App(): React.JSX.Element {
     dispatch(target.panelId, { op: "park", panelId: target.panelId });
   }
 
-  function renderPanelChrome(target: PanelRecord, title: string, extra?: React.ReactNode): React.JSX.Element {
-    const parked = target.placement === "parked";
+  function renderLiveWindow(target: PanelRecord, title: string, extra?: React.ReactNode): React.JSX.Element {
+    const entry = visibleTerminals.find((candidate) => candidate.panel.panelId === target.panelId);
     return React.createElement("article", {
       key: target.panelId,
-      style: parked ? styles.parkedTile : styles.liveTile,
+      style: styles.liveWindow,
       draggable: true,
       "data-panel-id": target.panelId,
       "data-panel-placement": target.placement,
       "data-panel-revision": target.revision,
       onClick: () => setFocusedPanelId(target.panelId),
       onDragStart: (event: React.DragEvent) => startPanelDrag(event, target.panelId),
-      onDoubleClick: parked ? () => snapBackPanel(target) : undefined,
-      onContextMenu: parked ? (event: React.MouseEvent) => { event.preventDefault(); snapBackPanel(target); } : undefined,
     },
-      React.createElement("div", { style: styles.tileHeader },
-        React.createElement("div", null,
-          React.createElement("strong", null, title),
-          React.createElement("div", { style: styles.tileState }, (parked ? "Parked · session still live" : "Running") + " · " + target.placement),
-        ),
-        React.createElement("span", { style: styles.revision }, "rev " + target.revision),
+      React.createElement("div", { style: styles.windowTitleBar },
+        React.createElement("span", { style: styles.windowGlyph }, ">_"),
+        React.createElement("strong", { style: styles.windowTitle }, title),
+        React.createElement("span", { style: styles.runningPill }, "RUNNING"),
+        React.createElement("span", { style: styles.windowSpacer }),
+        React.createElement("button", { type: "button", title: "Park", style: styles.windowControl, onClick: (event: React.MouseEvent) => { event.stopPropagation(); parkPanel(target); } }, "–"),
+        React.createElement("button", { type: "button", title: "Close", style: styles.windowControl, onClick: (event: React.MouseEvent) => { event.stopPropagation(); if (entry) void closeTerminal(entry); } }, "×"),
       ),
       extra ?? null,
     );
   }
 
-  const launchers = React.createElement("div", { style: styles.headerActions },
-    React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(shellProfile); } }, "New Terminal"),
-    React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(claudeProfile); } }, "Claude"),
-    React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(codexProfile); } }, "Codex"),
-    ...(sshInfo?.profiles ?? []).map((profile) => React.createElement("button", {
-      key: profile.profileId,
+  function renderParkedTile(target: PanelRecord, title: string, index: number): React.JSX.Element {
+    const mode = previewPaused ? "paused" : (livePreviews.includes(target.panelId) ? "live" : "static");
+    const snapshot = previewSnapshots[target.panelId] || readPanelPreview(target.panelId);
+    const subtitle = snapshot ? snapshot.trim().split("\n")[0]?.slice(0, 48) : (mode === "paused" ? "Preview paused · still live" : "Session still live");
+    return React.createElement("article", {
+      key: target.panelId,
+      style: { ...styles.parkedTile, background: parkedColors[index % parkedColors.length] },
+      draggable: true,
+      "data-panel-id": target.panelId,
+      "data-panel-placement": target.placement,
+      "data-panel-revision": target.revision,
+      onClick: () => setFocusedPanelId(target.panelId),
+      onDragStart: (event: React.DragEvent) => startPanelDrag(event, target.panelId),
+      onDoubleClick: () => snapBackPanel(target),
+      onContextMenu: (event: React.MouseEvent) => { event.preventDefault(); snapBackPanel(target); },
+    },
+      React.createElement("div", { style: styles.parkedTileTop },
+        React.createElement("div", null,
+          React.createElement("div", { style: styles.parkedTileTitle }, title),
+          React.createElement("div", { style: styles.parkedTileSub }, subtitle),
+        ),
+        React.createElement("button", { type: "button", title: "Restore", style: styles.parkedRestore, onClick: (event: React.MouseEvent) => { event.stopPropagation(); snapBackPanel(target); } }, "↩"),
+      ),
+      React.createElement("pre", { style: styles.preview, "data-preview-mode": mode }, snapshot || ""),
+      React.createElement("div", { style: styles.parkedHint }, "Double-click to restore"),
+    );
+  }
+
+  const railItem = (id: "home" | "sessions" | "settings", label: string, glyph: string, onClick: () => void): React.JSX.Element =>
+    React.createElement("button", {
       type: "button",
-      style: styles.headerButton,
-      onClick: () => { void connectSsh(profile.profileId); },
-    }, "SSH: " + profile.name)),
-    React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void window.nexusSsh.openFile().then((problem) => { if (problem) setSshError(problem); }); } }, "Edit SSH"),
-    React.createElement("span", { style: styles.badge }, window.nexusShell.version),
+      style: { ...styles.railItem, ...(shellView === id ? styles.railItemActive : {}) },
+      "data-rail": id,
+      onClick,
+    },
+      React.createElement("span", { style: styles.railGlyph }, glyph),
+      React.createElement("span", null, label),
+    );
+
+  const topBar = React.createElement("div", { style: styles.topBar },
+    React.createElement("div", { style: styles.wordmark },
+      React.createElement("span", { style: styles.wordmarkBox }, "NEXUS"),
+      React.createElement("span", { style: styles.wordmarkRest }, "OPERATIONS COCKPIT"),
+    ),
+    React.createElement("div", { style: styles.headerActions },
+      React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(shellProfile); } }, "New Terminal"),
+      React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(claudeProfile); } }, "Claude"),
+      React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(codexProfile); } }, "Codex"),
+      ...(sshInfo?.profiles ?? []).map((profile) => React.createElement("button", {
+        key: profile.profileId,
+        type: "button",
+        style: styles.headerButton,
+        onClick: () => { void connectSsh(profile.profileId); },
+      }, "SSH: " + profile.name)),
+      React.createElement("button", { type: "button", style: styles.headerButtonGhost, onClick: () => { void window.nexusSsh.openFile().then((problem) => { if (problem) setSshError(problem); }); } }, "Edit SSH"),
+    ),
+    React.createElement("div", { style: styles.statusCluster },
+      React.createElement("span", { style: styles.localDot }),
+      React.createElement("span", null, "LOCAL"),
+      React.createElement("span", { style: styles.clock }, clock),
+    ),
   );
 
-  return React.createElement(
-    "main",
-    { style: styles.app },
-    React.createElement(
-      "header",
-      { style: styles.header },
-      React.createElement("div", null,
-        React.createElement("div", { style: styles.eyebrow }, "NEXUS OPERATIONS COCKPIT"),
-        React.createElement("h1", { style: styles.title }, workspace.name),
+  const workspaceHeader = React.createElement("div", { style: styles.workspaceHeader },
+    React.createElement("div", { style: styles.workspaceMark }, "▦"),
+    React.createElement("div", null,
+      React.createElement("h1", { style: styles.title }, workspace.name),
+      React.createElement("div", { style: styles.workspaceMeta },
+        React.createElement("strong", { style: styles.workspaceMetaLabel }, "Active workspace"),
+        React.createElement("span", null, shelf.live.length + " live windows · " + shelf.parked.length + " parked · Windows remain live while parked"),
       ),
-      launchers,
     ),
-    React.createElement("nav", { style: styles.switcher, "aria-label": "Workspaces" },
-      tiles.length === 0
-        ? React.createElement("div", { style: styles.workspaceTile, "data-current": "true" }, workspace.name)
-        : tiles.map((tile, index) => React.createElement("button", {
-          key: tile.workspaceId,
-          type: "button",
-          style: { ...styles.workspaceTile, background: tileColors[index % tileColors.length], outline: tile.current ? "3px solid #fff" : "none" },
-          "data-current": tile.current ? "true" : "false",
-          "data-drop-target": "workspace",
-          "data-workspace-id": tile.workspaceId,
-          onDragOver: acceptPanelDrop,
-          onDrop: (event: React.DragEvent) => {
-            const panelId = droppedPanelId(event);
-            if (panelId) dropOnWorkspace(panelId, tile.workspaceId);
-          },
-          onClick: () => {
-            const record = workspaces.find((item) => item.workspaceId === tile.workspaceId);
-            if (record) openWorkspace(record);
-          },
-        },
-          React.createElement("span", { style: styles.workspaceTileName }, tile.name),
-          React.createElement("span", { style: styles.workspaceTileMeta }, tile.liveCount + " live · " + tile.parkedCount + " parked"),
-        )),
-      React.createElement("button", {
+  );
+
+  const liveCanvas = React.createElement("section", { style: styles.liveCanvas, "aria-label": "Live workspace" },
+    shelf.live.length === 0
+      ? React.createElement("div", { style: styles.emptyState },
+        React.createElement("div", { style: styles.muted }, layoutLoaded ? "No live terminals in this workspace. Start one, or restore a parked window." : "Loading workspace…"),
+        layoutLoaded ? React.createElement("button", { type: "button", style: styles.headerButton, onClick: () => { void launchProfile(shellProfile); } }, "New Terminal") : null,
+      )
+      : React.createElement("div", { style: styles.liveGrid },
+        shelf.live.map((item) => {
+          const entry = visibleTerminals.find((candidate) => candidate.panel.panelId === item.panelId);
+          if (!entry) return renderLiveWindow(item, item.panelId);
+          return renderLiveWindow(entry.panel, entry.label,
+            React.createElement(React.Fragment, null,
+              React.createElement(TerminalView, { key: entry.attachmentId, host: window.nexusHost, sessionId: entry.panel.sessionId, attachmentId: entry.attachmentId, initialOutput: entry.output, writable: entry.writable }),
+              React.createElement("div", { style: styles.windowFooter },
+                React.createElement("button", { onClick: () => dispatch(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),
+                React.createElement("button", { onClick: () => dispatch(entry.panel.panelId, { op: "setHome", panelId: entry.panel.panelId, anchor: { ...entry.panel.homeAnchor, layoutRevision: entry.panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
+                React.createElement("button", { onClick: () => { void runLifecycle(entry, "interrupt"); } }, "Interrupt"),
+                entry.profile ? React.createElement("button", { onClick: () => { void runLifecycle(entry, "restart"); } }, "Restart") : null,
+                React.createElement("button", { onClick: () => { void runLifecycle(entry, "terminate"); } }, "Terminate"),
+                lifecycleErrors[entry.panel.panelId] ? React.createElement("span", { style: styles.error }, lifecycleErrors[entry.panel.panelId]) : null,
+              ),
+            ),
+          );
+        }),
+      ),
+  );
+
+  const workspaceSwitcher = React.createElement("div", { id: "metro-workspaces", style: styles.workspaceDock },
+    React.createElement("div", { style: styles.sectionLabel }, "WORKSPACES"),
+    tiles.length === 0
+      ? React.createElement("div", { style: { ...styles.workspaceTile, background: tileColors[0] }, "data-current": "true" }, workspace.name)
+      : tiles.map((tile, index) => React.createElement("button", {
+        key: tile.workspaceId,
         type: "button",
-        style: styles.newWorkspaceTile,
-        "data-drop-target": "new-workspace",
-        onClick: () => setWorkspacePrompt({ name: nextWorkspaceName(workspaces) }),
+        style: { ...styles.workspaceTile, background: tileColors[index % tileColors.length], outline: tile.current ? "2px solid #ffffff" : "none" },
+        "data-current": tile.current ? "true" : "false",
+        "data-drop-target": "workspace",
+        "data-workspace-id": tile.workspaceId,
         onDragOver: acceptPanelDrop,
         onDrop: (event: React.DragEvent) => {
           const panelId = droppedPanelId(event);
-          if (panelId) dropOnWorkspace(panelId, "new");
+          if (panelId) dropOnWorkspace(panelId, tile.workspaceId);
+        },
+        onClick: () => {
+          const record = workspaces.find((item) => item.workspaceId === tile.workspaceId);
+          if (record) openWorkspace(record);
         },
       },
-        React.createElement("span", { style: styles.workspaceTileName }, "New workspace"),
-        React.createElement("span", { style: styles.workspaceTileMeta }, "Drop a tile here, or click to name one"),
-      ),
+        React.createElement("span", { style: styles.workspaceTileName }, tile.name),
+        React.createElement("span", { style: styles.workspaceTileMeta }, tile.liveCount + " live · " + tile.parkedCount + " parked"),
+        React.createElement("span", { style: tile.current ? styles.tileStatusActive : styles.tileStatus }, tile.current ? "ACTIVE" : "RUNNING"),
+      )),
+    React.createElement("button", {
+      type: "button",
+      style: styles.newWorkspaceTile,
+      "data-drop-target": "new-workspace",
+      onClick: () => setWorkspacePrompt({ name: nextWorkspaceName(workspaces) }),
+      onDragOver: acceptPanelDrop,
+      onDrop: (event: React.DragEvent) => {
+        const panelId = droppedPanelId(event);
+        if (panelId) dropOnWorkspace(panelId, "new");
+      },
+    },
+      React.createElement("span", { style: styles.workspaceTileName }, "New workspace"),
+      React.createElement("span", { style: styles.workspaceTileMeta }, "Drop a tile here, or click to name one"),
     ),
-    React.createElement(
-      "section",
-      { style: styles.workspace },
-      React.createElement("section", { style: styles.canvas },
-        React.createElement("div", { style: styles.sectionLabel }, "LIVE WORKSPACE"),
-        React.createElement("div", { style: styles.liveGrid },
-          shelf.live.length === 0
-            ? React.createElement("div", { style: styles.emptyState },
-              React.createElement("div", { style: styles.muted }, layoutLoaded ? "No live terminals in this workspace. Start one, or restore a parked window." : "Loading workspace…"),
-              layoutLoaded ? React.createElement("button", { type: "button", onClick: () => { void launchProfile(shellProfile); } }, "New Terminal") : null,
-            )
-            : shelf.live.map((item) => {
-              const entry = visibleTerminals.find((candidate) => candidate.panel.panelId === item.panelId);
-              if (!entry) return renderPanelChrome(item, item.panelId);
-              return renderPanelChrome(entry.panel, entry.label,
-                React.createElement(React.Fragment, null,
-                  React.createElement(TerminalView, { key: entry.attachmentId, host: window.nexusHost, sessionId: entry.panel.sessionId, attachmentId: entry.attachmentId, initialOutput: entry.output, writable: entry.writable }),
-                  React.createElement("div", { style: styles.controls },
-                    React.createElement("button", { onClick: () => parkPanel(entry.panel) }, "Park"),
-                    React.createElement("button", { onClick: () => dispatch(entry.panel.panelId, { op: "summon", panelId: entry.panel.panelId, targetSurface: "main" }) }, "Summon"),
-                    React.createElement("button", { onClick: () => dispatch(entry.panel.panelId, { op: "setHome", panelId: entry.panel.panelId, anchor: { ...entry.panel.homeAnchor, layoutRevision: entry.panel.homeAnchor.layoutRevision + 1 } }) }, "Set Home"),
-                    React.createElement("button", { onClick: () => { void runLifecycle(entry, "interrupt"); } }, "Interrupt"),
-                    entry.profile ? React.createElement("button", { onClick: () => { void runLifecycle(entry, "restart"); } }, "Restart") : null,
-                    React.createElement("button", { onClick: () => { void runLifecycle(entry, "terminate"); } }, "Terminate"),
-                    React.createElement("button", { onClick: () => { void closeTerminal(entry); } }, "Close"),
-                    lifecycleErrors[entry.panel.panelId] ? React.createElement("span", { style: styles.error }, lifecycleErrors[entry.panel.panelId]) : null,
-                  ),
-                ),
-              );
-            }),
-        ),
+  );
+
+  const parkedDock = React.createElement("div", { style: styles.parkedDock },
+    React.createElement("div", { style: styles.parkedHeading },
+      React.createElement("span", { style: styles.sectionLabel }, "PARKED (" + shelf.parked.length + ")"),
+      React.createElement("span", { style: styles.muted }, "Background windows (still live) · Double-click any window to restore it"),
+    ),
+    shelf.parked.length === 0
+      ? React.createElement("div", { style: styles.muted }, "Nothing parked. Parked sessions stay live.")
+      : React.createElement("div", { style: styles.parkedRow },
+        shelf.parked.map((item, index) => {
+          const entry = visibleTerminals.find((candidate) => candidate.panel.panelId === item.panelId);
+          return renderParkedTile(item, entry?.label ?? item.panelId, index);
+        }),
       ),
-      React.createElement("aside", { style: styles.shelf },
-        React.createElement("div", { style: styles.sectionLabel }, "PARKED"),
-        shelf.parked.length === 0
-          ? React.createElement("div", { style: styles.muted }, "Nothing parked. Parked sessions stay live.")
-          : shelf.parked.map((item) => {
-            const entry = visibleTerminals.find((candidate) => candidate.panel.panelId === item.panelId);
-            const title = entry?.label ?? item.panelId;
-            const mode = previewPaused ? "paused" : (livePreviews.includes(item.panelId) ? "live" : "static");
-            const snapshot = previewSnapshots[item.panelId] || readPanelPreview(item.panelId);
-            const placeholder = mode === "paused" ? "Session still live · preview paused" : "Session still live · preview pending";
-            return renderPanelChrome(item, title,
-              React.createElement(React.Fragment, null,
-                React.createElement("pre", { style: styles.preview, "data-preview-mode": mode }, snapshot || placeholder),
-                React.createElement("div", { style: styles.controls },
-                  React.createElement("button", { onClick: (event: React.MouseEvent) => { event.stopPropagation(); snapBackPanel(item); } }, "Restore"),
-                  React.createElement("span", { style: styles.muted }, "Double-click to restore · returns to " + item.homeAnchor.groupId),
-                ),
-              ),
-            );
-          }),
-        React.createElement("div", { style: styles.sectionLabel }, "SESSION SHELF"),
-        React.createElement("div", { style: styles.shelfToolbar },
-          React.createElement("label", { style: styles.muted },
-            React.createElement("input", {
-              type: "checkbox",
-              checked: showHiddenSessions,
-              onChange: (event: React.ChangeEvent<HTMLInputElement>) => setShowHiddenSessions(event.target.checked),
-            }),
-            " Show exited",
+  );
+
+  const sessionsView = React.createElement("section", { style: styles.auxView, "aria-label": "Sessions" },
+    React.createElement("div", { style: styles.sectionLabel }, "SESSION SHELF"),
+    React.createElement("div", { style: styles.shelfToolbar },
+      React.createElement("label", { style: styles.muted },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: showHiddenSessions,
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) => setShowHiddenSessions(event.target.checked),
+        }),
+        " Show exited",
+      ),
+      React.createElement("button", { type: "button", onClick: () => { void window.nexusSessions.clearExited().then((listed) => setSessions(listed.map(asShelfSession))); } }, "Clear exited"),
+      React.createElement("button", { type: "button", onClick: () => { void window.nexusSessions.clearLab().then((listed) => setSessions(listed.map(asShelfSession))); } }, "Clear lab/demo sessions"),
+    ),
+    visibleSessions.length === 0
+      ? React.createElement("div", { style: styles.muted }, showHiddenSessions ? "No persisted sessions" : "No active sessions. Exited and relaunch-only rows are hidden.")
+      : visibleSessions.map((session) => React.createElement("div", { style: styles.sessionCard, key: session.sessionId },
+        React.createElement("strong", null, sessionDisplayName(session)),
+        React.createElement("span", { style: styles.muted }, session.kind + " · " + session.sessionId),
+        React.createElement("span", { style: session.process === "running" ? styles.running : styles.muted },
+          "● "+session.process+" · "+session.recovery+(session.pid ? " · pid "+session.pid : "")),
+      )),
+    sshError ? React.createElement("span", { style: styles.error }, sshError) : null,
+    ...(sshInfo?.errors ?? []).map((message, index) => React.createElement("span", { style: styles.error, key: "ssh-err-" + index }, message)),
+  );
+
+  const settingsView = React.createElement("section", { style: styles.auxView, "aria-label": "Settings" },
+    React.createElement("div", { style: styles.sectionLabel }, "SETTINGS"),
+    React.createElement("p", { style: styles.muted }, "Companion and SSH profile files live in this machine's userData directory. Changes to network settings apply on restart."),
+    React.createElement("div", { style: styles.shelfToolbar },
+      React.createElement("button", { type: "button", onClick: () => { void window.nexusSsh.openFile().then((problem) => { if (problem) setSshError(problem); }); } }, "Edit SSH profiles"),
+      React.createElement("button", { type: "button", onClick: () => { void window.nexusCompanion.openNetworkFile(); } }, "Edit companion network settings"),
+    ),
+    companionInfo ? React.createElement("div", { style: styles.companionCard },
+      React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, " + (companionInfo.mode === "local" ? "LOOPBACK" : companionInfo.mode === "private" ? "PRIVATE NETWORK" : "HTTPS") + ")"),
+      React.createElement("span", { style: styles.muted }, companionInfo.url+" · host "+companionInfo.hostId),
+      companionInfo.enrollmentToken
+        ? React.createElement(React.Fragment, null,
+          React.createElement("div", { style: styles.muted }, "Enrollment token (shown once this run):"),
+          React.createElement("code", { style: styles.token }, companionInfo.enrollmentToken),
+          React.createElement("button", { onClick: () => { void navigator.clipboard.writeText(companionInfo.enrollmentToken ?? ""); } }, "Copy token"))
+        : React.createElement("span", { style: styles.muted }, "Token already shown this run, or the companion is not started."),
+      companionInfo.credentialsPath
+        ? React.createElement("span", { style: styles.muted }, "Saved (user-only): "+companionInfo.credentialsPath)
+        : React.createElement("span", { style: styles.error }, companionInfo.credentialsWarning ?? "No credentials file written."),
+      companionInfo.networkWarning ? React.createElement("span", { style: styles.error }, companionInfo.networkWarning) : null,
+    ) : React.createElement("div", { style: styles.muted }, "Companion is not running in this session (smoke runs do not start it)."),
+    sshError ? React.createElement("span", { style: styles.error }, sshError) : null,
+  );
+
+  return React.createElement(
+    "div",
+    { style: styles.app },
+    topBar,
+    React.createElement("div", { style: styles.shell },
+      React.createElement("nav", { style: styles.rail, "aria-label": "Shell" },
+        railItem("home", "Home", "⌂", () => setShellView("home")),
+        React.createElement("button", {
+          type: "button",
+          style: styles.railItem,
+          "data-rail": "workspaces",
+          onClick: () => {
+            setShellView("home");
+            window.setTimeout(() => document.getElementById("metro-workspaces")?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
+          },
+        }, React.createElement("span", { style: styles.railGlyph }, "▦"), React.createElement("span", null, "Workspaces")),
+        railItem("sessions", "Sessions", ">_", () => setShellView("sessions")),
+        railItem("settings", "Settings", "⚙", () => setShellView("settings")),
+      ),
+      shellView === "sessions" ? sessionsView
+        : shellView === "settings" ? settingsView
+        : React.createElement("div", { style: styles.home },
+          workspaceHeader,
+          liveCanvas,
+          React.createElement("div", { style: styles.bottomBand },
+            workspaceSwitcher,
+            parkedDock,
           ),
-          React.createElement("button", { type: "button", onClick: () => { void window.nexusSessions.clearExited().then((listed) => setSessions(listed.map(asShelfSession))); } }, "Clear exited"),
-          React.createElement("button", { type: "button", onClick: () => { void window.nexusSessions.clearLab().then((listed) => setSessions(listed.map(asShelfSession))); } }, "Clear lab/demo sessions"),
         ),
-        visibleSessions.length === 0
-          ? React.createElement("div", { style: styles.muted }, showHiddenSessions ? "No persisted sessions" : "No active sessions. Exited and relaunch-only rows are hidden.")
-          : visibleSessions.map((session) => React.createElement("div", { style: styles.sessionCard, key: session.sessionId },
-            React.createElement("strong", null, sessionDisplayName(session)),
-            React.createElement("span", { style: styles.muted }, session.kind + " · " + session.sessionId),
-            React.createElement("span", { style: session.process === "running" ? styles.running : styles.muted },
-              "● "+session.process+" · "+session.recovery+(session.pid ? " · pid "+session.pid : "")),
-          )),
-        sshError ? React.createElement("span", { style: styles.error }, sshError) : null,
-        ...(sshInfo?.errors ?? []).map((message, index) => React.createElement("span", { style: styles.error, key: "ssh-err-" + index }, message)),
-        companionInfo && !companionDismissed ? React.createElement("div", { style: styles.companionCard },
-          React.createElement("div", { style: styles.sectionLabel }, "COMPANION (READ-ONLY, " + (companionInfo.mode === "local" ? "LOOPBACK" : companionInfo.mode === "private" ? "PRIVATE NETWORK" : "HTTPS") + ")"),
-          React.createElement("span", { style: styles.muted }, companionInfo.url+" · host "+companionInfo.hostId),
-          companionInfo.enrollmentToken
-            ? React.createElement(React.Fragment, null,
-              React.createElement("div", { style: styles.muted }, "Enrollment token (shown once this run):"),
-              React.createElement("code", { style: styles.token }, companionInfo.enrollmentToken),
-              React.createElement("button", { onClick: () => { void navigator.clipboard.writeText(companionInfo.enrollmentToken ?? ""); } }, "Copy token"))
-            : React.createElement("span", { style: styles.muted }, "Token already shown this run."),
-          companionInfo.credentialsPath
-            ? React.createElement("span", { style: styles.muted }, "Saved (user-only): "+companionInfo.credentialsPath)
-            : React.createElement("span", { style: styles.error }, companionInfo.credentialsWarning ?? "No credentials file written."),
-          companionInfo.networkWarning ? React.createElement("span", { style: styles.error }, companionInfo.networkWarning) : null,
-          React.createElement("span", { style: styles.muted }, "Valid until the app exits; a new token is issued next launch."),
-          React.createElement("button", { onClick: () => { void window.nexusCompanion.openNetworkFile(); } }, "Edit network settings (restart to apply)"),
-          React.createElement("button", { onClick: () => setCompanionDismissed(true) }, "Hide"),
-        ) : null,
-      ),
     ),
     workspacePrompt ? React.createElement("div", { style: styles.modalBackdrop, role: "dialog", "aria-modal": "true", "aria-label": "New workspace" },
       React.createElement("form", {
@@ -629,7 +715,7 @@ function App(): React.JSX.Element {
         }),
         workspacePrompt.error ? React.createElement("div", { style: styles.error }, workspacePrompt.error) : null,
         workspacePrompt.panelId ? React.createElement("div", { style: styles.muted }, "The dropped window will move into this workspace.") : null,
-        React.createElement("div", { style: styles.controls },
+        React.createElement("div", { style: styles.windowFooter },
           React.createElement("button", { type: "submit" }, "Create"),
           React.createElement("button", { type: "button", onClick: () => setWorkspacePrompt(null) }, "Cancel"),
         ),
@@ -639,41 +725,69 @@ function App(): React.JSX.Element {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  app: { minHeight: "100vh", padding: "24px 28px", boxSizing: "border-box", background: "#111111", color: "#ffffff", fontFamily: "Segoe UI, Segoe UI Variable, sans-serif" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 16, flexWrap: "wrap" },
-  headerActions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" },
-  headerButton: { border: "none", background: "#0072C6", color: "#fff", padding: "8px 12px", cursor: "pointer", fontWeight: 600 },
-  eyebrow: { color: "#ffffff", fontSize: 11, letterSpacing: 2.4, fontWeight: 700, opacity: 0.7 },
-  title: { margin: "6px 0 0", fontSize: 36, fontWeight: 300, letterSpacing: -0.6 },
-  badge: { color: "#111111", background: "#ffffff", padding: "6px 12px", fontSize: 12, fontWeight: 600 },
-  switcher: { display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" },
-  workspaceTile: { border: "none", color: "#fff", minWidth: 160, minHeight: 72, padding: "12px 14px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
-  newWorkspaceTile: { border: "2px dashed #666", color: "#fff", background: "transparent", minWidth: 160, minHeight: 72, padding: "12px 14px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
-  workspaceTileName: { fontSize: 18, fontWeight: 600 },
-  workspaceTileMeta: { fontSize: 11, opacity: 0.9 },
-  workspace: { display: "grid", gridTemplateColumns: "1fr 300px", gap: 12, minHeight: 620 },
-  shelf: { background: "#1b1b1b", padding: 16, display: "grid", alignContent: "start", gap: 10 },
+  app: { minHeight: "100vh", boxSizing: "border-box", background: "#07111f", color: "#ffffff", fontFamily: "Segoe UI, Segoe UI Variable, sans-serif", display: "flex", flexDirection: "column" },
+  topBar: { display: "flex", alignItems: "center", gap: 16, padding: "10px 16px", background: "#06101c", borderBottom: "1px solid #16304a", flexWrap: "wrap" },
+  wordmark: { display: "flex", alignItems: "center", gap: 10, letterSpacing: 1.4, fontWeight: 700, fontSize: 13 },
+  wordmarkBox: { background: "#0078D4", color: "#fff", padding: "4px 8px", borderRadius: 4, letterSpacing: 1.6 },
+  wordmarkRest: { opacity: 0.9, fontWeight: 600 },
+  headerActions: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginLeft: "auto" },
+  headerButton: { border: "none", background: "#0078D4", color: "#fff", padding: "7px 12px", cursor: "pointer", fontWeight: 600, borderRadius: 2 },
+  headerButtonGhost: { border: "1px solid #3a5675", background: "transparent", color: "#fff", padding: "7px 12px", cursor: "pointer", fontWeight: 600 },
+  statusCluster: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, letterSpacing: 1, fontWeight: 600 },
+  localDot: { width: 8, height: 8, borderRadius: 99, background: "#3DDB84", display: "inline-block" },
+  clock: { opacity: 0.9, marginLeft: 8, paddingLeft: 8, borderLeft: "1px solid #3a5675" },
+  shell: { display: "grid", gridTemplateColumns: "88px 1fr", flex: 1, minHeight: 0 },
+  rail: { background: "#050d18", borderRight: "1px solid #16304a", display: "flex", flexDirection: "column", padding: "12px 8px", gap: 8 },
+  railItem: { border: "none", background: "transparent", color: "#c5d4e6", padding: "12px 6px", cursor: "pointer", display: "grid", gap: 6, justifyItems: "center", fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 700 },
+  railItemActive: { background: "#0078D4", color: "#fff" },
+  railGlyph: { fontSize: 20, lineHeight: 1 },
+  home: { display: "grid", gridTemplateRows: "auto 1fr auto", minHeight: 0, padding: "16px 20px 20px", gap: 14 },
+  workspaceHeader: { display: "flex", alignItems: "center", gap: 14 },
+  workspaceMark: { width: 44, height: 44, background: "#12324d", display: "grid", placeItems: "center", fontSize: 22 },
+  title: { margin: 0, fontSize: 32, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" },
+  workspaceMeta: { display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap", color: "#9db0c6", fontSize: 13, marginTop: 4 },
+  workspaceMetaLabel: { color: "#fff", fontWeight: 600, fontSize: 13 },
+  liveCanvas: { minHeight: 280 },
+  liveGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12, alignContent: "start" },
+  liveWindow: { background: "#0b1624", color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", border: "1px solid #1d3650", minHeight: 280 },
+  windowTitleBar: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#102033", borderBottom: "1px solid #1d3650" },
+  windowGlyph: { color: "#7dd0ff", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 13 },
+  windowTitle: { fontSize: 13, fontWeight: 650, letterSpacing: 0.2 },
+  runningPill: { color: "#04130a", background: "#3DDB84", fontSize: 10, fontWeight: 800, letterSpacing: 0.8, padding: "2px 7px", borderRadius: 99 },
+  windowSpacer: { flex: 1 },
+  windowControl: { border: "none", background: "transparent", color: "#c5d4e6", width: 24, height: 22, cursor: "pointer", fontSize: 14 },
+  windowFooter: { display: "flex", gap: 8, padding: "8px 10px", flexWrap: "wrap", background: "#08121d", borderTop: "1px solid #1d3650" },
+  emptyState: { display: "grid", gap: 12, padding: 28, background: "#0b1624", border: "1px dashed #3a5675", alignContent: "center", justifyItems: "start", minHeight: 220 },
+  bottomBand: { display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, alignItems: "start" },
+  workspaceDock: { display: "grid", gap: 8, alignContent: "start" },
+  workspaceTile: { border: "none", color: "#fff", minHeight: 64, padding: "10px 12px", textAlign: "left", cursor: "pointer", display: "grid", gridTemplateColumns: "1fr auto", gridTemplateRows: "auto auto", columnGap: 8, alignContent: "space-between" },
+  newWorkspaceTile: { border: "1px dashed #5a7a98", color: "#fff", background: "transparent", minHeight: 64, padding: "10px 12px", textAlign: "left", cursor: "pointer", display: "grid", alignContent: "space-between" },
+  workspaceTileName: { fontSize: 16, fontWeight: 700, gridColumn: "1 / 2" },
+  workspaceTileMeta: { fontSize: 11, opacity: 0.9, gridColumn: "1 / 2" },
+  tileStatus: { fontSize: 10, fontWeight: 800, letterSpacing: 0.8, alignSelf: "center", gridColumn: "2", gridRow: "1 / span 2" },
+  tileStatusActive: { fontSize: 10, fontWeight: 800, letterSpacing: 0.8, alignSelf: "center", gridColumn: "2", gridRow: "1 / span 2", color: "#04130a", background: "#3DDB84", padding: "3px 7px", borderRadius: 99 },
+  parkedDock: { display: "grid", gap: 8, minWidth: 0 },
+  parkedHeading: { display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" },
+  parkedRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 },
+  parkedTile: { color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", minHeight: 150, padding: 12, boxSizing: "border-box" },
+  parkedTileTop: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
+  parkedTileTitle: { fontSize: 16, fontWeight: 700 },
+  parkedTileSub: { fontSize: 12, opacity: 0.9, marginTop: 4 },
+  parkedRestore: { border: "none", background: "rgba(0,0,0,0.25)", color: "#fff", width: 32, height: 32, cursor: "pointer", fontSize: 16 },
+  parkedHint: { marginTop: "auto", paddingTop: 8, fontSize: 12, opacity: 0.9 },
+  preview: { margin: "8px 0 0", minHeight: 36, maxHeight: 48, overflow: "hidden", padding: 0, color: "rgba(255,255,255,0.85)", background: "transparent", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 11, lineHeight: 1.3, pointerEvents: "none", whiteSpace: "pre-wrap", wordBreak: "break-word" },
+  auxView: { padding: 24, display: "grid", alignContent: "start", gap: 12 },
   shelfToolbar: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
-  sectionLabel: { color: "#ffffff", fontSize: 11, letterSpacing: 2, fontWeight: 700, margin: "8px 0", opacity: 0.7 },
-  sessionCard: { display: "grid", gap: 6, padding: 12, background: "#2b2b2b" },
-  muted: { color: "#c8c8c8", fontSize: 12 },
-  running: { color: "#a6ef3a", fontSize: 12 },
+  sectionLabel: { color: "#ffffff", fontSize: 11, letterSpacing: 2, fontWeight: 700, margin: 0, opacity: 0.8 },
+  sessionCard: { display: "grid", gap: 6, padding: 12, background: "#0b1624", border: "1px solid #1d3650" },
+  muted: { color: "#9db0c6", fontSize: 12 },
+  running: { color: "#3DDB84", fontSize: 12 },
   error: { color: "#ff8a80", fontSize: 12 },
-  companionCard: { display: "grid", gap: 8, marginTop: 8, padding: 12, background: "#2b2b2b", wordBreak: "break-all" },
-  token: { padding: 8, background: "#111111", color: "#a6ef3a", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 12 },
-  canvas: { background: "#1b1b1b", padding: 16, minWidth: 0 },
-  liveGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 },
-  emptyState: { display: "grid", gap: 12, padding: 24, background: "#2b2b2b", alignContent: "center", justifyItems: "start" },
-  liveTile: { background: "#0072C6", color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column" },
-  parkedTile: { background: "#2b2b2b", color: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer", border: "2px solid #555" },
-  tileHeader: { display: "flex", justifyContent: "space-between", padding: "14px 16px", alignItems: "flex-start" },
-  tileState: { fontSize: 12, marginTop: 4, textTransform: "uppercase", letterSpacing: 1, opacity: 0.9 },
-  revision: { color: "#fff", fontSize: 12, opacity: 0.8 },
-  preview: { margin: 0, minHeight: 88, maxHeight: 120, overflow: "hidden", padding: "8px 10px", color: "#d8f5e6", background: "#0a0a0a", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 11, lineHeight: 1.4, pointerEvents: "none", whiteSpace: "pre-wrap", wordBreak: "break-word" },
+  companionCard: { display: "grid", gap: 8, marginTop: 8, padding: 12, background: "#0b1624", border: "1px solid #1d3650", wordBreak: "break-all" },
+  token: { padding: 8, background: "#07111f", color: "#a6ef3a", fontFamily: "Cascadia Code, Consolas, monospace", fontSize: 12 },
   modalBackdrop: { position: "fixed", inset: 0, background: "#00000099", display: "grid", placeItems: "center", zIndex: 20 },
-  modal: { background: "#1b1b1b", padding: 24, minWidth: 320, display: "grid", gap: 12, border: "1px solid #444" },
-  modalInput: { padding: "8px 10px", fontSize: 16, background: "#111", color: "#fff", border: "1px solid #555" },
-  controls: { display: "flex", gap: 8, padding: 12, flexWrap: "wrap", background: "#0a0a0a" },
+  modal: { background: "#0b1624", padding: 24, minWidth: 320, display: "grid", gap: 12, border: "1px solid #3a5675" },
+  modalInput: { padding: "8px 10px", fontSize: 16, background: "#07111f", color: "#fff", border: "1px solid #3a5675" },
 };
 
 createRoot(document.getElementById("root")!).render(React.createElement(App));
