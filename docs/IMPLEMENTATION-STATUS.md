@@ -101,6 +101,14 @@ runtime behavior is already implemented.
 - M2.11 adds Interrupt/Terminate/Close on every panel. M2.12 adds the `local`/`private`/`https` companion
   reachability modes (see ROADMAP); the default remains loopback-only. This supersedes the "not yet a LAN
   service" note on M2.3 for configured installs; remote use has been tested only from this machine.
+- Metro follow-up: decided restore gesture, throttled parked previews, and
+  File-menu plus drag-and-drop workspace create/move, all persisted through the
+  existing registry. See ROADMAP "Metro cockpit".
+- Usable-shell follow-up: always-rebuild desktop start (`npm run desktop`), no
+  auto-started ipc-tick demo, smoke/tests isolated to a temporary userData
+  directory, xterm-only live terminals, session shelf filtering plus clear
+  exited/lab actions, human session names (profile + cwd, SQLite v4), and a
+  header New Terminal / profile / SSH launcher with an empty-state CTA.
 
 ## Evidence
 
@@ -141,9 +149,21 @@ Validated locally on Windows with Node 24.21.0:
    node-pty's `conpty_console_list_agent` does not inherit `node --test` flags and fail
    the parent test file after a clean dispose.
 
-The panel reducer is still presentation-only, but SnapBack anchor resolution, SQLite
-layout persistence, and desktop reload recovery are implemented and tested as described
-above. What remains unclaimed: PTY survival across a GUI or supervisor crash (the
-supervisor still runs in Electron main; extraction is a planned later milestone), a
-Metro (or other) docking/pop-out UI, and the WebContentsView dock/float/park matrix
-in issue #3.
+The first Metro cockpit spike is on `main`. A follow-up slice adds the decided
+restore gesture (double-click primary; per-tile Restore button and context action
+as the accessible secondary; no restore-all), cheap parked-tile previews from a
+throttled terminal-buffer snapshot (configurable interval, hidden/minimized pause,
+concurrency cap, static fallback), and workspace create/move from File > New
+Workspace... plus drag-and-drop onto the switcher or a New workspace drop target,
+persisted through the existing SQLite registry. Unit tests cover partitioning,
+workspace creation and moves, and preview throttling.
+
+What remains unclaimed or deferred: PTY survival across a GUI or supervisor crash
+(the supervisor still runs in Electron main; extraction is a planned later
+milestone); WebContentsView dock/float/park (issue #3); `capturePage` previews for
+browser views; workspace rename/delete UI (empty-workspace delete already exists
+at the storage boundary); a measured CPU figure on the 2-core/2-thread Celeron
+host (capture durations can be logged with `NEXUS_METRO_PREVIEW_TRACE=1`); and
+visual fidelity of the Metro shell to the concept image in
+`docs/design/operations-cockpit-metro-concept.md` (layout regions, typography,
+and tile treatment still differ).

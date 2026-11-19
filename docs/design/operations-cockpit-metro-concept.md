@@ -17,9 +17,9 @@ This concept responds to the desired direction for Nexus: a desktop operations w
 
 SnapBack is the behavior of an individual window returning to its saved position in the workspace. It is not a global command or a special master tile.
 
-Each parked window should offer a direct, obvious way to bring that same window back to its remembered place. This can be a restore button/affordance on the window's own parked item, or a double-click on that item. A click-to-select followed by a window-specific restore action is also reasonable if the interaction is clear. Do not require a global “SnapBack” button or “restore all” control.
+Each parked window should offer a direct, obvious way to bring that same window back to its remembered place. The decided interaction is double-click on that parked item as the primary restore gesture, with a per-tile Restore button (and a right-click context action) as the accessible secondary. Do not require a global “SnapBack” button or “restore all” control.
 
-On restore, return the window to its saved workspace and position while preserving its live session when the underlying tool supports that. The UI should make clear which window is being restored and where it will return. The precise single-click versus double-click interaction remains an implementation choice to validate with the user.
+On restore, return the window to its saved workspace and position while preserving its live session when the underlying tool supports that. The UI should make clear which window is being restored and where it will return.
 
 ## Concept elements
 

@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +9,7 @@ const require = createRequire(import.meta.url);
 const electron = require("electron");
 const here = path.dirname(fileURLToPath(import.meta.url));
 const main = path.resolve(here, "../dist/main/main.js");
+const userData = mkdtempSync(path.join(os.tmpdir(), "nexus-restart-smoke-"));
 
 function run(mode, marker) {
   return new Promise((resolve, reject) => {
@@ -14,6 +17,7 @@ function run(mode, marker) {
       stdio: ["ignore", "pipe", "inherit"],
       env: {
         ...process.env,
+        NEXUS_DESKTOP_USER_DATA: userData,
         ...(mode === "seed"
           ? { NEXUS_DESKTOP_RECOVERY_SEED: "1" }
           : { NEXUS_DESKTOP_RECOVERY_RELAUNCH: "1" }),
@@ -44,4 +48,6 @@ try {
 } catch (error) {
   console.error(error);
   process.exit(1);
+} finally {
+  try { rmSync(userData, { recursive: true, force: true }); } catch { /* Electron may still hold the temp dir on Windows */ }
 }

@@ -68,8 +68,8 @@ test("session and panel metadata survive store reopen", () => {
     const panelColumns = (schema.prepare("PRAGMA table_info(panels)").all() as Array<{ name: string }>)
       .map(({ name }) => name).sort();
     assert.deepEqual(sessionColumns, [
-      "created_at", "exit_code", "host_boot_epoch", "host_id", "kind", "last_observed_at",
-      "pid", "process", "recovery", "session_id", "transport",
+      "created_at", "cwd", "exit_code", "host_boot_epoch", "host_id", "kind", "label",
+      "last_observed_at", "pid", "process", "recovery", "session_id", "transport",
     ]);
     assert.deepEqual(panelColumns, [
       "home_anchor", "panel_id", "placement", "revision", "session_id", "surface_id",
@@ -157,7 +157,7 @@ test("workspace registry persists stable names and deterministic ordering", () =
   store.close();
 });
 
-test("v1 metadata migrates to v3 without losing sessions or panels", () => {
+test("v1 metadata migrates to v4 without losing sessions or panels", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "nexus-storage-migration-"));
   const filename = path.join(directory, "metadata.sqlite");
   try {
@@ -182,7 +182,7 @@ test("v1 metadata migrates to v3 without losing sessions or panels", () => {
     const migrated = new DatabaseSync(filename);
     const version = (migrated.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
     migrated.close();
-    assert.equal(version, 3);
+    assert.equal(version, 4);
     assert.deepEqual(reopened.loadSession(session.sessionId), session);
     assert.deepEqual(reopened.loadPanel(panel.panelId), panel);
     assert.deepEqual(reopened.listWorkspaces(), []);
@@ -191,4 +191,29 @@ test("v1 metadata migrates to v3 without losing sessions or panels", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("session labels and cwd survive supervisor updates that omit them", () => {
+  const store = new MetadataStore(":memory:");
+  store.saveSession({ ...session, label: "Shell", cwd: "C:\\work" });
+  const { pid: _pid, ...withoutPid } = session;
+  store.saveSession({ ...withoutPid, process: "exited", recovery: "none", exitCode: 0 });
+  const loaded = store.loadSession(session.sessionId);
+  assert.equal(loaded?.label, "Shell");
+  assert.equal(loaded?.cwd, "C:\\work");
+  assert.equal(loaded?.process, "exited");
+  assert.equal(loaded?.exitCode, 0);
+  store.close();
+});
+
+test("deleteSessions removes sessions and cascaded panels", () => {
+  const store = new MetadataStore(":memory:");
+  store.saveSession(session);
+  store.saveSession({ ...session, sessionId: "session-storage-2" });
+  store.savePanel(panel);
+  assert.equal(store.deleteSessions([session.sessionId]), 1);
+  assert.equal(store.loadSession(session.sessionId), null);
+  assert.equal(store.loadPanel(panel.panelId), null);
+  assert.equal(store.loadSession("session-storage-2")?.sessionId, "session-storage-2");
+  store.close();
 });

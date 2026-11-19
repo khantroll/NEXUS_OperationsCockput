@@ -70,6 +70,10 @@ export interface SessionRecord {
   /** PID is advisory; session identity is not derived solely from the PID. */
   pid?: number;
   exitCode?: number | null;
+  /** Operator-facing name, e.g. profile name. Never a secret. */
+  label?: string;
+  /** Working directory shown in the shelf, when known. Never a secret. */
+  cwd?: string;
 }
 
 export interface AttachmentRecord {
