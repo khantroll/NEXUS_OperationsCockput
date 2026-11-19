@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,10 +9,11 @@ const require = createRequire(import.meta.url);
 const electron = require("electron");
 const here = path.dirname(fileURLToPath(import.meta.url));
 const main = path.resolve(here, "../dist/main/main.js");
+const userData = mkdtempSync(path.join(os.tmpdir(), "nexus-smoke-"));
 
 const child = spawn(electron, [main, "--no-sandbox", "--disable-gpu"], {
   stdio: ["ignore", "pipe", "inherit"],
-  env: { ...process.env, NEXUS_DESKTOP_SMOKE: "1" },
+  env: { ...process.env, NEXUS_DESKTOP_SMOKE: "1", NEXUS_DESKTOP_USER_DATA: userData },
 });
 
 let output = "";
@@ -22,6 +25,7 @@ function finish(code) {
   finished = true;
   clearTimeout(timeout);
   if (child.exitCode === null) child.kill();
+  rmSync(userData, { recursive: true, force: true });
   process.exit(code);
 }
 

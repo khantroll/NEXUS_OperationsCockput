@@ -1,6 +1,6 @@
 # Desktop Shell Spike
 
-Status: build-validated laboratory shell | 2026-11-15
+Status: Metro desktop shell, usable daily path in progress | 2026-11-19
 
 `apps/desktop` is the first Electron + React + TypeScript surface. Electron owns the
 window and hardened preload boundary; Vite builds the React renderer. The renderer uses
@@ -19,6 +19,8 @@ Terminal input is opt-in: renderer attachments default to read-only, only one wr
 is allowed per session, and writes are bounded and owner-checked at the IPC boundary.
 The shell exposes Set Home and keyboard shortcuts for Park, Summon, SnapBack, and Set Home;
 these remain presentation-only reducer commands.
+Launch with `npm run desktop` from the repo root (or `npm start --workspace @nexus/desktop`); both rebuild the renderer first.
+The default shell no longer auto-starts the ipc-tick demo or renders a raw `<pre>` presentation card; new terminals are xterm sessions started from the header.
 
 Validated:
 

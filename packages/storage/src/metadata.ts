@@ -19,8 +19,8 @@ export class MetadataStore {
     this.db.prepare(`
       INSERT INTO sessions (
         session_id, host_id, host_boot_epoch, kind, transport, process,
-        recovery, created_at, last_observed_at, pid, exit_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        recovery, created_at, last_observed_at, pid, exit_code, label, cwd
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET
         host_id = excluded.host_id,
         host_boot_epoch = excluded.host_boot_epoch,
@@ -30,7 +30,9 @@ export class MetadataStore {
         recovery = excluded.recovery,
         last_observed_at = excluded.last_observed_at,
         pid = excluded.pid,
-        exit_code = excluded.exit_code
+        exit_code = excluded.exit_code,
+        label = COALESCE(excluded.label, sessions.label),
+        cwd = COALESCE(excluded.cwd, sessions.cwd)
     `).run(
       session.sessionId,
       session.hostId,
@@ -43,6 +45,8 @@ export class MetadataStore {
       session.lastObservedAt,
       session.pid ?? null,
       session.exitCode ?? null,
+      session.label ?? null,
+      session.cwd ?? null,
     );
   }
 
@@ -61,6 +65,8 @@ export class MetadataStore {
       lastObservedAt: row.last_observed_at,
       ...(row.pid === null ? {} : { pid: row.pid }),
       ...(row.exit_code === null ? {} : { exitCode: row.exit_code }),
+      ...(row.label === null || row.label === undefined ? {} : { label: row.label }),
+      ...(row.cwd === null || row.cwd === undefined ? {} : { cwd: row.cwd }),
     };
   }
 
@@ -70,6 +76,25 @@ export class MetadataStore {
       const session = this.loadSession(session_id);
       return session ? [session] : [];
     });
+  }
+
+  /** Delete a session and any panels that reference it (FK cascade). */
+  public deleteSession(sessionId: string): boolean {
+    return Number(this.db.prepare("DELETE FROM sessions WHERE session_id = ?").run(sessionId).changes) > 0;
+  }
+
+  public deleteSessions(sessionIds: readonly string[]): number {
+    let removed = 0;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const statement = this.db.prepare("DELETE FROM sessions WHERE session_id = ?");
+      for (const sessionId of sessionIds) removed += Number(statement.run(sessionId).changes);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return removed;
   }
 
   public saveWorkspace(workspace: WorkspaceRecord): void {
@@ -230,6 +255,10 @@ export class MetadataStore {
     });
   }
 
+  public deletePanel(panelId: string): boolean {
+    return Number(this.db.prepare("DELETE FROM panels WHERE panel_id = ?").run(panelId).changes) > 0;
+  }
+
   public close(): void {
     this.db.close();
   }
@@ -283,6 +312,11 @@ export class MetadataStore {
       );
       PRAGMA user_version = 3;
     `);
+    if (version < 4) this.db.exec(`
+      ALTER TABLE sessions ADD COLUMN label TEXT;
+      ALTER TABLE sessions ADD COLUMN cwd TEXT;
+      PRAGMA user_version = 4;
+    `);
   }
 }
 
@@ -298,6 +332,8 @@ interface SessionRow {
   last_observed_at: string;
   pid: number | null;
   exit_code: number | null;
+  label?: string | null;
+  cwd?: string | null;
 }
 
 interface PanelRow {

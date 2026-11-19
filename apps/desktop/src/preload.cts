@@ -45,6 +45,8 @@ const metro = {
 };
 const sessions = {
   list: () => ipcRenderer.invoke("nexus:session:list"),
+  clearExited: () => ipcRenderer.invoke("nexus:session:clear-exited"),
+  clearLab: () => ipcRenderer.invoke("nexus:session:clear-lab"),
 };
 
 const ssh = {
