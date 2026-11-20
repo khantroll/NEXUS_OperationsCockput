@@ -105,8 +105,10 @@ runtime behavior is already implemented.
   File-menu plus drag-and-drop workspace create/move, all persisted through the
   existing registry. See ROADMAP "Metro cockpit".
 - Visual fidelity pass against `docs/design/operations-cockpit-metro-concept.md`:
-  top wordmark bar, left rail, active-workspace header, window-chrome live
-  terminals, vertical workspace dock, and colorful parked tiles.
+  top wordmark bar with LOCAL/clock, left rail icons, active-workspace header,
+  window-chrome live terminals that fill the canvas above a fixed bottom dock,
+  xterm fit/wrap with PTY resize, Metro title-bar controls, and a read-only
+  git repo tile from allow-listed main-process inspect.
 - Usable-shell follow-up: always-rebuild desktop start (`npm run desktop`), no
   auto-started ipc-tick demo, smoke/tests isolated to a temporary userData
   directory, xterm-only live terminals, session shelf filtering plus clear
@@ -168,6 +170,6 @@ browser views; workspace rename/delete UI (empty-workspace delete already exists
 at the storage boundary); a measured CPU figure on the 2-core/2-thread Celeron
 host (capture durations can be logged with `NEXUS_METRO_PREVIEW_TRACE=1`).
 Remaining visual differences versus the concept image are listed in the Metro
-visual-fidelity PR: no illustrated third-party tiles, launchers live in the
-top bar, live terminals still expose lab footer controls, and typography/
-spacing are not pixel-identical.
+visual-fidelity PR: launchers still live in the top bar, illustrated Docs/VS
+Code tiles are not seeded, typography/icons are not pixel-identical, and the
+repo tile is a read-only git inspect rather than a live SCM integration.

@@ -8,6 +8,7 @@
     "./metro-shelf": "./src/metro-shelf.ts",
     "./metro-workspace": "./src/metro-workspace.ts",
     "./metro-preview": "./src/metro-preview.ts",
-    "./session-shelf": "./src/session-shelf.ts"
+    "./session-shelf": "./src/session-shelf.ts",
+    "./git-repo": "./src/git-repo.ts"
   }
 }

@@ -36,4 +36,4 @@ The concept does not settle M1 acceptance criteria, the exact window-management 
 
 ## Implemented shell
 
-The desktop shell now follows this concept's regions and restore gesture (double-click primary, per-tile Restore secondary). Workspace names come from the real registry; the pictured Conclave / Tank / Home Lab labels and Git / browser / VS Code tiles are illustrations, not seeded sample data. Remaining visual differences are listed in the visual-fidelity pull request.
+The desktop shell now follows this concept's regions and restore gesture (double-click primary, per-tile Restore secondary). Workspace names come from the real registry; the pictured Conclave / Tank / Home Lab labels and Git / browser / VS Code tiles are illustrations, not seeded sample data. Live terminals fit and wrap with the xterm Fit addon, fill the canvas above a fixed bottom dock, and use Metro title-bar controls. A read-only REPO tile can show a local git tree, last-commit file list, and activity from an allow-listed main-process inspect of the workspace cwd. Remaining visual differences are listed in the visual-fidelity pull request.

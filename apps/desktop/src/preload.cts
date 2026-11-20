@@ -54,6 +54,9 @@ const ssh = {
   start: (profileId: string) => ipcRenderer.invoke("nexus:ssh:start", profileId),
   openFile: () => ipcRenderer.invoke("nexus:ssh:open-file"),
 };
+const git = {
+  inspect: (request: { cwd?: string; relativeDir?: string }) => ipcRenderer.invoke("nexus:git:inspect", request),
+};
 const companion = {
   info: () => ipcRenderer.invoke("nexus:companion:info"),
   openNetworkFile: () => ipcRenderer.invoke("nexus:companion:open-network-file"),
@@ -70,3 +73,4 @@ contextBridge.exposeInMainWorld("nexusMetro", metro);
 contextBridge.exposeInMainWorld("nexusSessions", sessions);
 contextBridge.exposeInMainWorld("nexusCompanion", companion);
 contextBridge.exposeInMainWorld("nexusSsh", ssh);
+contextBridge.exposeInMainWorld("nexusGit", git);
