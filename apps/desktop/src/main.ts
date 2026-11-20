@@ -10,6 +10,7 @@ import { assertNonSecretCliArguments, type CliProfileRecord, type PanelRecord, t
 import { exportRedactedLayout, importRedactedLayout } from "@nexus/core/layout";
 import { parsePreviewConcurrency, parsePreviewIntervalMs } from "@nexus/core/metro-preview";
 import { isLabOrDemoPanel, sessionsToClearExited, sessionsToClearLab } from "@nexus/core/session-shelf";
+import { runGitInspect } from "./git-inspect.js";
 import { startCompanionService, type CompanionService } from "@nexus/integration/companion-service";
 import { parseCompanionNetworkConfig, type CompanionNetworkConfig } from "@nexus/integration/companion-network";
 import { createMetadataReadModel } from "@nexus/integration/metadata-read-model";
@@ -147,6 +148,29 @@ function detachSessionAttachments(sessionId: string): void {
       if (writerBySession.get(sessionId) === attachmentId) writerBySession.delete(sessionId);
     }
   }
+}
+
+
+function allowedGitRoots(): string[] {
+  const roots = new Set<string>([process.cwd()]);
+  for (const session of metadataStore.listSessions()) {
+    if (session.cwd) roots.add(session.cwd);
+  }
+  for (const profile of metadataStore.listProfiles()) {
+    if (profile.cwd) roots.add(profile.cwd);
+  }
+  return [...roots];
+}
+
+function registerGitIpc(): void {
+  ipcMain.handle("nexus:git:inspect", async (event, request: unknown) => {
+    assertRenderer(event);
+    const input = typeof request === "object" && request !== null ? request as { cwd?: unknown; relativeDir?: unknown } : {};
+    const payload: { cwd?: unknown; relativeDir?: unknown } = {};
+    if (typeof input.cwd === "string") payload.cwd = input.cwd;
+    if (typeof input.relativeDir === "string") payload.relativeDir = input.relativeDir;
+    return runGitInspect(payload, allowedGitRoots());
+  });
 }
 
 /** The raw token is revealed to the renderer once per run; the user-only file remains the durable copy. */
@@ -597,6 +621,7 @@ app.whenReady().then(async () => {
   registerHostIpc();
   registerCompanionIpc();
   registerSshIpc();
+  registerGitIpc();
   const recoveryMode = process.env.NEXUS_DESKTOP_RECOVERY_SEED === "1"
     ? "seed"
     : process.env.NEXUS_DESKTOP_RECOVERY_RELAUNCH === "1" ? "relaunch" : null;

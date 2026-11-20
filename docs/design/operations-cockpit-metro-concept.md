@@ -32,3 +32,8 @@ On restore, return the window to its saved workspace and position while preservi
 ## Out of scope for this image
 
 The concept does not settle M1 acceptance criteria, the exact window-management architecture, supported terminal/browser providers, or remote-access security. The UI should reflect verified product capability as implementation proceeds; illustrative content in the image is not evidence that a feature is already implemented.
+
+
+## Implemented shell
+
+The desktop shell now follows this concept's regions and restore gesture (double-click primary, per-tile Restore secondary). Workspace names come from the real registry; the pictured Conclave / Tank / Home Lab labels and Git / browser / VS Code tiles are illustrations, not seeded sample data. Live terminals fit and wrap with the xterm Fit addon, fill the canvas above a fixed bottom dock, and use Metro title-bar controls. A read-only REPO tile can show a local git tree, last-commit file list, and activity from an allow-listed main-process inspect of the workspace cwd. Remaining visual differences are listed in the visual-fidelity pull request.
