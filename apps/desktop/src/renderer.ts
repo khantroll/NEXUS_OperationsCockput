@@ -6,7 +6,7 @@ import { metroWorkspaceTiles, partitionMetroPanels } from "../../../packages/cor
 import { livePreviewSet, summarizePreviewCost, tickPreviewScheduler } from "../../../packages/core/src/metro-preview.js";
 import { applyWorkspaceDrop, createWorkspaceRecord, nextWorkspaceName } from "../../../packages/core/src/metro-workspace.js";
 import { isLabOrDemoPanel, sessionDisplayName, visibleShelfSessions, type ShelfSession } from "../../../packages/core/src/session-shelf.js";
-import type { GitInspectResult, GitRepoView } from "../../../packages/core/src/git-repo-view.js";
+import type { GitInspectResult, GitRepoView } from "./git-repo-types.js";
 import { appendPanelPreview, readPanelPreview, seedPanelPreview } from "./preview-buffers.js";
 import { TerminalView, discardTerminalBuffer, routeTerminalData } from "./terminal-view.js";
 
